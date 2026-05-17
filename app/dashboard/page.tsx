@@ -1997,7 +1997,8 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
             </div>
 
             {/* Right side: Plan badge + Time + Print + Dark mode + User + Logout */}
-            className="flex flex-wrap items-center gap-2 text-[11px] sm:text-xs text-slate-200 xl:gap-3"
+            <div className="flex flex-wrap items-center gap-2 text-[11px] sm:text-xs text-slate-200 xl:gap-3">
+                          
               {/* Plan badge */}
               <span
                 className={
@@ -2134,6 +2135,7 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
               >
                 Log out
               </button>
+            </div>
             
           </header>
 
