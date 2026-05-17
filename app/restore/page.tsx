@@ -5,6 +5,8 @@ import { useEffect, useState, FormEvent, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseclient";
 import { useAuth } from "@/app/context/AuthContext";
+import { PRICING } from "@/lib/pricing";
+
 
 type TransactionType = "income" | "expense";
 
@@ -178,7 +180,6 @@ function BudgetStatusIcon({ status }: { status: "ok" | "near" | "over" | "none" 
             onClose: () => void;
           }) {
             if (!open) return null;
-<div className="text-xs text-amber-400 mb-2">Restore build</div>
 
             return (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -221,8 +222,32 @@ export default function DashboardPage() {
   const incomeScrollRef = useRef<HTMLDivElement | null>(null);
   const expenseScrollRef = useRef<HTMLDivElement | null>(null);
 
-  const [profile, setProfile] = useState<{ plan: string; category_order: string[] } | null>(null);
-  const isPro = (profile?.plan ?? "free").toString().trim().toLowerCase() === "pro";
+  const [profile, setProfile] = useState<{
+  plan: string;
+  category_order: string[];
+  stripe_subscription_status?: string | null;
+  pro_grace_until?: string | null;
+  } | null>(null);
+
+
+  const [profileLoading, setProfileLoading] = useState(true);
+  
+  const plan = (profile?.plan ?? "free").toString().trim().toLowerCase();
+  
+  const subStatus: string | null = profile?.stripe_subscription_status ?? null;
+  const graceUntilRaw: string | null = profile?.pro_grace_until ?? null;
+
+  const graceUntil = graceUntilRaw ? new Date(graceUntilRaw) : null;
+  const now = new Date();
+
+  const inGrace = graceUntil ? now < graceUntil : false;
+  const paidOk = subStatus === "active" || subStatus === "trialing";
+
+  // ✅ if user is "pro" but we have no billing fields yet, treat as pro
+  const legacyPro = subStatus === null && graceUntilRaw === null;
+
+  const isPro = plan === "pro" && (paidOk || inGrace || legacyPro);
+
  
   
     // ISO date string YYYY-MM-DD for Supabase filter
@@ -246,71 +271,78 @@ export default function DashboardPage() {
 
     <div className=""></div>
 
-        async function loadProfile(userId: string) {
-          const { data, error } = await supabase
-            .from("profiles")
-            .select("plan, category_order")
-            .eq("id", userId)
-            .maybeSingle();
+      async function loadProfile(userId: string) {
+        setProfileLoading(true);
 
-          if (error) {
-            console.error("Error loading profile:", error);
-            setProfile({ plan: "free", category_order: [] });
-            return;
-          }
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("plan, category_order, pro_grace_until, stripe_subscription_status")
+          .eq("id", userId)
+          .maybeSingle();
 
-          if (!data) {
-            // create missing profile
-            const { error: insertErr } = await supabase
-              .from("profiles")
-              .insert({ id: userId, plan: "free", category_order: [] });
-
-            if (insertErr) {
-              console.error("Error creating profile:", insertErr);
-            }
-
-            setProfile({ plan: "free", category_order: [] });
-            return;
-          }
-
-          setProfile({
-            plan: (data.plan ?? "free").toString().toLowerCase(),
-            category_order: data.category_order ?? [],
-          });
+        if (error) {
+          console.error("Error loading profile:", error);
+          setProfile({ plan: "free", category_order: [] });
+          setProfileLoading(false);
+          return;
         }
+
+        if (!data) {
+          // create missing profile
+          const { error: insertErr } = await supabase
+            .from("profiles")
+            .insert({ id: userId, plan: "free", category_order: [] });
+
+          if (insertErr) {
+            console.error("Error creating profile:", insertErr);
+          }
+
+          setProfile({ plan: "free", category_order: [] });
+          setProfileLoading(false);
+          return;
+        }
+
+        setProfile({
+          plan: (data.plan ?? "free").toString().toLowerCase(),
+          category_order: data.category_order ?? [],
+        });
+
+        setProfileLoading(false);
+      }
+
     
-async function handleUpgrade() {
-  
-  if (!userId || !userEmail) {
-    alert("Missing user session. Please log out and log in again.");
-    return;
-  }
+      async function handleUpgrade() {
+        
+        if (!userId || !userEmail) {
+          alert("Missing user session. Please log out and log in again.");
+          return;
+        }
 
-  const res = await fetch("/api/stripe/checkout", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userId, email: userEmail }),
-  });
+        const res = await fetch("/api/stripe/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, email: userEmail }),
+        });
 
-  let data: any = null;
-  try {
-    data = await res.json();
-  } catch (e) {
-    
-  }
+        let data: any = null;
+        try {
+          data = await res.json();
+        } catch (e) {
+          
+        }
 
-    if (!res.ok) {
-    alert(data?.error ?? `Checkout failed (status ${res.status})`);
-    return;
-  }
+          if (!res.ok) {
+          alert(data?.error ?? `Checkout failed (status ${res.status})`);
+          return;
+        }
 
-  if (data?.url) {
-    
-    window.location.href = data.url;
-  } else {
-    alert("Checkout failed: missing session url");
-  }
-}
+        if (data?.url) {
+          
+          window.location.href = data.url;
+        } else {
+          alert("Checkout failed: missing session url");
+        }
+      }
 
 
           
@@ -361,6 +393,9 @@ async function handleUpgrade() {
   // ---- QUICK ADD BAR (CENTER TOP) ----
   const [quickCategory, setQuickCategory] = useState<string>("");
   const [quickAmount, setQuickAmount] = useState("");
+  const [quickAddStatus, setQuickAddStatus] =
+    useState<"idle" | "added" | "error">("idle");
+
   const [quickDate, setQuickDate] = useState("");
   const [quickDescription, setQuickDescription] = useState("");
   const [quickSaving, setQuickSaving] = useState(false);
@@ -802,8 +837,6 @@ async function handleAddCategoryEntry(e: FormEvent, categoryName: string) {
   setExpandedCategory(null);
 }
 
-
-
   // ---- QUICK ADD ----
   async function handleQuickAdd(e: FormEvent) {
     e.preventDefault();
@@ -820,45 +853,38 @@ async function handleAddCategoryEntry(e: FormEvent, categoryName: string) {
     }
 
     const cat = categories.find((c) => c.name === quickCategory);
-
-      if (!cat) {
-        console.warn("Quick Add: category not found", {
-          quickCategory,
-          categories: categories.map((c) => c.name),
-        });
-
-        if (categories.length > 0) {
-          setQuickCategory(categories[0].name);
-        }
-
-        setErrorMessage(
-          "Category not found for Quick Add. Please pick a category again."
-        );
-        return;
+    if (!cat) {
+      // Optional: auto-select first category if something got out of sync
+      if (categories.length > 0) {
+        setQuickCategory(categories[0].name);
       }
+      setErrorMessage("Category not found for Quick Add. Please pick a category again.");
+      return;
+    }
 
-      if (!quickAmount || !quickDate) {
-        setErrorMessage("Please fill amount and date.");
-        return;
-      }
-      
-      const amountNumber = Number(quickAmount);
-      if (Number.isNaN(amountNumber) || amountNumber <= 0) {
-        setErrorMessage("Amount must be a positive number.");
-        return;
-      }
+    if (!quickAmount || !quickDate) {
+      setErrorMessage("Please fill amount and date.");
+      return;
+    }
 
-        const chosen = new Date(quickDate);
-        const periodStartDate = new Date(periodStart);
+    const amountNumber = Number(quickAmount);
+    if (Number.isNaN(amountNumber) || amountNumber <= 0) {
+      setErrorMessage("Amount must be a positive number.");
+      return;
+    }
 
-        if (chosen < periodStartDate || chosen > today) {
-          setErrorMessage(`Only last ${windowDays} days are allowed for your plan.`);
-          return;
-        }
-              
-      setQuickSaving(true);
-        
+    const chosen = new Date(quickDate);
+    const periodStartDate = new Date(periodStart);
+
+    if (chosen < periodStartDate || chosen > today) {
+      setErrorMessage(`Only last ${windowDays} days are allowed for your plan.`);
+      return;
+    }
+
+    setQuickSaving(true);
+
     try {
+      // 1) INSERT (single insert, return inserted row id)
       const { data: insertedRows, error: insertError } = await supabase
         .from("transactions")
         .insert({
@@ -869,19 +895,23 @@ async function handleAddCategoryEntry(e: FormEvent, categoryName: string) {
           category: cat.name,
           description: quickDescription || null,
         })
-        .select();
+        .select("id")
+        .limit(1);
 
       if (insertError) {
-        console.error("Quick Add insert error:", insertError);
+        setQuickAddStatus("error");
+        setTimeout(() => setQuickAddStatus("idle"), 2000);
         setErrorMessage(insertError.message);
         return;
       }
 
-      let newId: string | null = null;
-      if (insertedRows && insertedRows.length > 0) {
-        newId = insertedRows[0].id as string;
-      }
+      // ✅ SUCCESS UX
+      setQuickAddStatus("added");
+      setTimeout(() => setQuickAddStatus("idle"), 1200);
 
+      const newId = insertedRows?.[0]?.id ?? null;
+
+      // 2) RELOAD transactions for current period
       const { data, error: txError } = await supabase
         .from("transactions")
         .select("*")
@@ -890,16 +920,20 @@ async function handleAddCategoryEntry(e: FormEvent, categoryName: string) {
         .order("date", { ascending: false });
 
       if (txError) {
-        console.error("Quick Add reload error:", txError);
+        setQuickAddStatus("error");
+        setTimeout(() => setQuickAddStatus("idle"), 2000);
         setErrorMessage(txError.message);
-      } else {
-        setTransactions((data ?? []) as Transaction[]);
+        return;
       }
 
+      setTransactions((data ?? []) as Transaction[]);
+
+      // 3) Highlight new tx if we have id
       if (newId) {
         setHighlightedTxId(newId);
       }
 
+      // 4) Clear fields
       setQuickAmount("");
       setQuickDescription("");
       setQuickDate(todayStr);
@@ -907,7 +941,10 @@ async function handleAddCategoryEntry(e: FormEvent, categoryName: string) {
     } finally {
       setQuickSaving(false);
     }
- }
+  }
+
+
+
 
     function startEdit(t: Transaction) {
       setEditingId(t.id);
@@ -1303,8 +1340,9 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
               </div>
             </div>
             <div className="text-right">
-              <div className="text-xl font-bold">$9</div>
-              <div className="text-xs text-slate-400">per month</div>
+              <div className="text-xl font-bold">{PRICING.monthly.label}</div>
+
+              <div className="text-xs text-slate-400">per month. Cancel it anytime.</div>
             </div>
           </div>
         </div>
@@ -1849,19 +1887,35 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
           </div>
 
           {/* LEFT SIDEBAR PLAN LABEL */}
-          <div className="px-3 py-3 border-t border-slate-800 text-[11px] text-slate-400">
-            <p>
-              Plan:{" "}
-              <span className={isPro ? "text-amber-300 font-semibold" : ""}>
-                {isPro ? "Pro" : "Free"}
-              </span>
-            </p>
-            <p className="mt-1 text-emerald-400">
-              {isPro
-                ? "Pro: tracking the last {windowDays}. Reports coming soon."
-                : "Free: tracking the last ${windowDays} days. Upgrade to Pro for 90 days & reports."}
-            </p>
-          </div>
+   <div className="mt-4 space-y-1">
+  <div className="text-slate-300">
+    Plan: <span className="font-semibold text-yellow-300">{isPro ? "Pro" : "Free"}</span>
+  </div>
+
+  {isPro ? (
+    <p className="text-emerald-300">
+      Pro: tracking the last <span className="font-semibold">{windowDays}</span> days.
+      <br />
+      Reports coming soon.
+    </p>
+  ) : (
+    <p className="text-slate-300">
+      Free: tracking up to <span className="font-semibold">{windowDays}</span> days.
+      Upgrade to unlock custom ranges and extended history.
+    </p>
+  )}
+
+      <div className="mt-3">
+      <a
+      href="mailto:support@flowtrack.app?subject=FlowTrack Support"
+      className="text-sm text-slate-400 hover:text-white underline"
+    >
+      Need help? Contact support
+    </a>
+
+  </div>
+</div>
+
         </aside>
 
         {/* ========================= */}
@@ -2072,6 +2126,13 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
               >
                 {quickSaving ? "Adding..." : "Add"}
               </button>
+              {quickAddStatus === "added" && (
+                    <span className="text-xs text-emerald-400 ml-2">Added ✓</span>
+                  )}
+                  {quickAddStatus === "error" && (
+                    <span className="text-xs text-red-400 ml-2">Couldn’t add</span>
+                  )}
+
             </form>
           </div>
 
@@ -2095,6 +2156,12 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
                   <p className="text-xl font-semibold">
                     {formatCurrency(income)}
                   </p>
+                  {income === 0 && (
+                    <div className="mt-1 text-xs text-slate-400">
+                      No income yet — add your first income entry to get started.
+                    </div>
+                  )}
+
                 </div>
               </div>
 
@@ -2110,6 +2177,14 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
                   <p className="text-xl font-semibold">
                     {formatCurrency(expenses)}
                   </p>
+
+                  {expenses === 0 && (
+                    <div className="mt-1 text-xs text-slate-400">
+                      No expenses recorded — track spending to see where your money goes.
+                    </div>
+                  )}
+
+
                 </div>
               </div>
 
@@ -2125,6 +2200,9 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
 
                   <p className="text-xl font-semibold">
                     {formatCurrency(net)}
+
+
+
                   </p>
                   <p className="mt-1 text-[11px] text-slate-400">
                     Status:{" "}

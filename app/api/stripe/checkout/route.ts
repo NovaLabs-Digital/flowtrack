@@ -11,6 +11,7 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+
 function isLiveStripeKey(key: string) {
   return key.startsWith("sk_live_");
 }
@@ -42,6 +43,8 @@ export async function POST(req: Request) {
       );
     }
 
+
+    
     // ✅ Pick correct monthly price by environment (test vs live)
     const priceId = isLiveStripeKey(secretKey)
       ? process.env.STRIPE_PRICE_MONTHLY_LIVE
@@ -56,6 +59,8 @@ export async function POST(req: Request) {
         },
         { status: 500 }
       );
+
+      
     }
 
     // ✅ Reuse Stripe customer if we already have one
@@ -104,5 +109,8 @@ export async function POST(req: Request) {
       { error: e?.message ?? "Stripe error" },
       { status: 500 }
     );
+console.log("STRIPE_SECRET_KEY prefix:", process.env.STRIPE_SECRET_KEY?.slice(0, 7));
+
+
   }
 }

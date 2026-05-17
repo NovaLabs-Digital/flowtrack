@@ -229,6 +229,12 @@ export default function DashboardPage() {
   pro_grace_until?: string | null;
   } | null>(null);
 
+  const isGraceActive =
+  profile?.pro_grace_until &&
+  new Date(profile.pro_grace_until) > new Date();
+
+  const hasProAccess =
+  profile?.plan === "pro" || isGraceActive;
 
   const [profileLoading, setProfileLoading] = useState(true);
   
@@ -246,7 +252,15 @@ export default function DashboardPage() {
   // ✅ if user is "pro" but we have no billing fields yet, treat as pro
   const legacyPro = subStatus === null && graceUntilRaw === null;
 
-  const isPro = plan === "pro" && (paidOk || inGrace || legacyPro);
+  // auto-expire grace period
+  const graceExpired =
+    graceUntilRaw &&
+    new Date(graceUntilRaw).getTime() < Date.now();
+
+  const isPro =
+  plan === "pro" &&
+  !graceExpired &&
+  (paidOk || inGrace || legacyPro);
 
  
   
@@ -285,6 +299,33 @@ export default function DashboardPage() {
           setProfile({ plan: "free", category_order: [] });
           setProfileLoading(false);
           return;
+        }
+
+        // ---- SAFETY DOWNGRADE CHECK ----
+        const graceExpired =
+          data?.pro_grace_until &&
+          new Date(data.pro_grace_until).getTime() < Date.now();
+
+        const subscriptionInactive =
+          data?.stripe_subscription_status &&
+          data.stripe_subscription_status !== "active";
+
+        if (
+          data?.plan === "pro" &&
+          graceExpired &&
+          subscriptionInactive
+        ) {
+          console.log("Grace period expired — downgrading user");
+
+          await supabase
+            .from("profiles")
+            .update({
+              plan: "free",
+              pro_grace_until: null,
+            })
+            .eq("id", userId);
+
+          data.plan = "free";
         }
 
         if (!data) {
@@ -347,7 +388,7 @@ export default function DashboardPage() {
 
           
     function handlePrintReport() {
-      if (!isPro) {
+      if (!hasProAccess) {
         openUpgrade("Print / PDF reports are Pro.");
         return;
       }
@@ -609,7 +650,7 @@ async function handleApplyCustomRange() {
     alert("Please choose both start and end dates.");
     return;
   }
-  if (!isPro) {
+  if (!hasProAccess) {
   openUpgrade("Custom date ranges are Pro.");
   return;
   }
@@ -708,6 +749,31 @@ const effectiveEndDate =
 async function handleLogout() {
   await supabase.auth.signOut();
   router.push("/login");
+}
+async function handleManageBilling() {
+  try {
+    const res = await fetch("/api/stripe/portal", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userId: user?.id,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || "Unable to open billing portal");
+      return;
+    }
+
+    window.location.href = data.url;
+  } catch (err) {
+    console.error(err);
+    alert("Something went wrong");
+  }
 }
 
   // ---- CATEGORY & ENTRY HANDLERS (LEFT BAR + CENTER) ----
@@ -1923,15 +1989,15 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
         {/* ========================= */}
         <section className="flex-1 flex flex-col">
           {/* TOP HORIZONTAL BAR / HEADER */}
-          <header className="h-14 border-b border-slate-800 flex items-center justify-between px-4 bg-slate-950/80 mb-3">
+          <header className="min-h-14 border-b border-slate-800 flex flex-col gap-3 px-4 py-3 bg-slate-950/80 mb-3 xl:flex-row xl:items-center xl:justify-between">
             {/* Left side */}
-            <div className="flex items-center gap-2 text-xs text-slate-400">
+            <div className="flex items-center gap-2 text-[11px] sm:text-xs text-slate-400">
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
               <span>Live money session</span>
             </div>
 
             {/* Right side: Plan badge + Time + Print + Dark mode + User + Logout */}
-            <div className="flex items-center gap-3 text-xs text-slate-200">
+            className="flex flex-wrap items-center gap-2 text-[11px] sm:text-xs text-slate-200 xl:gap-3"
               {/* Plan badge */}
               <span
                 className={
@@ -1940,10 +2006,22 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
                     : "px-2 py-1 rounded-full bg-slate-800 border border-slate-600 text-[11px] uppercase tracking-wide text-slate-300"
                 }
               >
-                {isPro ? "PRO" : "FREE"}
+                {isPro
+                    ? profile?.stripe_subscription_status === "past_due"
+                      ? "PRO (Grace)"
+                      : "PRO"
+                    : "FREE"}
+              
               </span>
 
-                {!isPro && (
+              <button
+                onClick={() => router.push("/dashboard/settings")}
+                className="rounded-lg border border-slate-600 px-3 py-1 hover:bg-slate-800"
+              >
+                Settings
+              </button>
+          
+              {!isPro && (
                   <div className="mt-1 text-[11px] text-slate-400">
                     Want custom ranges & up to 120 days?{" "}
                     <button
@@ -2030,13 +2108,7 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
                     Print / PDF
                     </button>
 
-                    <button
-                    onClick={handleLogout}
-                    className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-500 text-[11px] font-medium"
-                    >
-                    Log out
-                  </button>
-
+                   
               {/* Dark Mode (placeholder) */}
               <button
                 className="no-print px-3 py-1 rounded-full border border-slate-600 text-xs text-slate-300 cursor-not-allowed opacity-60"
@@ -2062,8 +2134,26 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
               >
                 Log out
               </button>
-            </div>
+            
           </header>
+
+           {profile?.stripe_subscription_status === "past_due" && (
+              <div className="mx-4 mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <strong>Payment issue detected.</strong>{" "}
+                    Please update your billing information to keep Pro access active.
+                  </div>
+
+                  <button
+                    onClick={() => router.push("/dashboard/settings")}
+                    className="rounded-lg border border-amber-400/50 px-3 py-1 text-xs hover:bg-amber-500/20"
+                  >
+                    Update billing
+                  </button>
+                </div>
+              </div>
+            )}
 
           {/* QUICK ADD BAR */}
           <div className="border-b border-slate-900 bg-slate-950/90 px-4 py-3 text-[11px] no-print">
