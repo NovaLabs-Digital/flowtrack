@@ -48,6 +48,7 @@ const DEFAULT_CATEGORY_BUDGETS: Record<string, number> = {};
 const CATEGORIES_STORAGE_KEY = "ft_categories_v1";
 const BUDGETS_STORAGE_KEY = "ft_category_budgets_v1";
 
+
 // ---- HELPERS ----
 function summarize(transactions: Transaction[]) {
   const income = transactions
@@ -61,6 +62,8 @@ function summarize(transactions: Transaction[]) {
   const net = income - expenses;
   return { income, expenses, net };
 }
+
+
 
 // Global override to detect ISO dates anywhere and format automatically
 function displayDate(v: string) {
@@ -221,7 +224,8 @@ export default function DashboardPage() {
   const categoryListRef = useRef<HTMLUListElement | null>(null);
   const incomeScrollRef = useRef<HTMLDivElement | null>(null);
   const expenseScrollRef = useRef<HTMLDivElement | null>(null);
-
+  
+  const [showWelcomeBanner, setShowWelcomeBanner] = useState(false);
   const [profile, setProfile] = useState<{
   plan: string;
   category_order: string[];
@@ -550,6 +554,8 @@ function moveCategoryByDrag(dragName: string, dropName: string, type: "income" |
   }
 }
 
+const [checkingOnboarding, setCheckingOnboarding] = useState(true);
+
 useEffect(() => {
   if (authLoading) return;
   if (!user?.id) return;
@@ -583,6 +589,34 @@ useEffect(() => {
     window.history.replaceState({}, "", url.toString());
   }
 }, [user?.id]);
+
+
+useEffect(() => {
+  async function checkOnboardingStatus() {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("onboarding_completed")
+      .eq("id", user.id)
+      .single();
+
+    if (error) {
+      console.error("Failed to check onboarding status:", error);
+      setCheckingOnboarding(false);
+      return;
+    }
+
+    if (data && data.onboarding_completed === false) {
+      router.push("/onboarding");
+      return;
+    }
+
+    setCheckingOnboarding(false);
+  }
+
+  checkOnboardingStatus();
+}, [user, router]);
 
 function getReportTransactions(all: Transaction[]): Transaction[] {
   // helpers
@@ -710,10 +744,11 @@ const effectiveEndDate =
     ? customEnd
     : todayStr;
 
+
 // ---- LOAD TRANSACTIONS FROM SUPABASE ----
-  useEffect(() => {
+useEffect(() => {
   async function loadTransactions() {
-    if (authLoading || !user) return;
+    if (authLoading || !user?.id) return;
 
     setLoading(true);
     setErrorMessage(null);
@@ -722,8 +757,6 @@ const effectiveEndDate =
       .from("transactions")
       .select("*")
       .eq("user_id", user.id)
-      .gte("date", periodStart)
-      .lte("date", periodEnd)
       .order("date", { ascending: false });
 
     if (error) {
@@ -733,17 +766,25 @@ const effectiveEndDate =
       return;
     }
 
+    const filtered = (data ?? []).filter((t) => {
+      return t.date >= periodStart && t.date <= periodEnd;
+    });
+
+console.log("USER ID:", user.id);
+console.log("ALL TRANSACTIONS FROM SUPABASE:", data);
+console.log("PERIOD:", periodStart, periodEnd);
+console.log("FILTERED:", filtered);
+
     setTransactions((data ?? []) as Transaction[]);
     setLoading(false);
   }
 
   loadTransactions();
-}, [authLoading, user, periodStart, periodEnd]);
+}, [authLoading, user?.id, periodStart, periodEnd]);
 
 
 //INSERT VARIABLE HERE?// const effectiveStartdate....
 
-// ---- LOAD TRANSACTIONS FROM SUPABASE ----
 
 // ---- LOGOUT ----
 async function handleLogout() {
@@ -1313,9 +1354,21 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
   });
 }
 
-
   loadCategories();
 }, [authLoading, user]);
+
+
+useEffect(() => {
+  const welcome = new URLSearchParams(window.location.search).get("welcome");
+
+  if (welcome === "1") {
+    setShowWelcomeBanner(true);
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete("welcome");
+    window.history.replaceState({}, "", url.toString());
+  }
+}, []);
 
   // ---- DERIVED VALUES ----
   const { income, expenses, net } = summarize(transactions);
@@ -1354,6 +1407,20 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
   const topCategories = Object.entries(expenseByCategory)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3);
+
+if (checkingOnboarding) {
+  return (
+    <main className="min-h-screen bg-slate-950 flex items-center justify-center text-white">
+      <div className="text-center">
+        <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-blue-500 border-t-transparent mx-auto" />
+
+        <p className="text-sm text-slate-400">
+          Loading FlowTrack...
+        </p>
+      </div>
+    </main>
+  );
+}
 
   // ---- LOADING / REDIRECT ----
   if (authLoading) {
@@ -1973,7 +2040,7 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
 
       <div className="mt-3">
       <a
-      href="mailto:support@flowtrack.app?subject=FlowTrack Support"
+      href="mailto:support@appflowtrack.com?subject=FlowTrack Support"
       className="text-sm text-slate-400 hover:text-white underline"
     >
       Need help? Contact support
@@ -2136,7 +2203,7 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
                 Log out
               </button>
             </div>
-            
+
           </header>
 
            {profile?.stripe_subscription_status === "past_due" && (
@@ -2159,6 +2226,30 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
 
           {/* QUICK ADD BAR */}
           <div className="border-b border-slate-900 bg-slate-950/90 px-4 py-3 text-[11px] no-print">
+            {showWelcomeBanner && (
+              <div className="mb-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-emerald-100">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold">
+                      Welcome to FlowTrack 👋
+                    </h2>
+
+                    <p className="mt-1 text-sm text-emerald-100/80">
+                      Your dashboard is now active. Add another real expense when ready.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowWelcomeBanner(false)}
+                    className="rounded-lg border border-emerald-400/30 px-3 py-1 text-xs hover:bg-emerald-400/10"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
+
             <form
               onSubmit={handleQuickAdd}
               className="flex flex-wrap items-center gap-2 md:gap-3"
