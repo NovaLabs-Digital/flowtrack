@@ -2020,32 +2020,33 @@ if (checkingOnboarding) {
           </div>
 
           {/* LEFT SIDEBAR PLAN LABEL */}
-   <div className="mt-4 space-y-1">
-  <div className="text-slate-300">
-    Plan: <span className="font-semibold text-yellow-300">{isPro ? "Pro" : "Free"}</span>
-  </div>
+   <div className="mt-4 border-t border-white/5 pt-3 text-[11px] leading-relaxed text-slate-500">
+  <p>
+    Plan:{" "}
+    <span className="font-medium text-slate-300">
+      {isPro ? "Pro" : "Free"}
+    </span>
+  </p>
 
-  {isPro ? (
-    <p className="text-emerald-300">
-      Pro: tracking the last <span className="font-semibold">{windowDays}</span> days.
-      <br />
-      Reports coming soon.
-    </p>
-  ) : (
-    <p className="text-slate-300">
-      Free: tracking up to <span className="font-semibold">{windowDays}</span> days.
-      Upgrade to unlock custom ranges and extended history.
+  <p className="mt-1">
+    {isPro
+      ? `Tracking ${windowDays} days history.`
+      : `Tracking up to ${windowDays} days.`}
+  </p>
+
+  {!isPro && (
+    <p className="mt-1">
+      Upgrade for longer history.
     </p>
   )}
 
-      <div className="mt-3">
-      <a
+  <div className="mt-3">
+    <a
       href="mailto:support@appflowtrack.com?subject=FlowTrack Support"
-      className="text-sm text-slate-400 hover:text-white underline"
+      className="text-[11px] text-slate-500 hover:text-slate-300"
     >
-      Need help? Contact support
+      Contact support
     </a>
-
   </div>
 </div>
 
