@@ -2020,7 +2020,7 @@ if (checkingOnboarding) {
           </div>
 
           {/* LEFT SIDEBAR PLAN LABEL */}
-   <div className="mt-4 border-t border-white/5 pt-3 text-[11px] leading-relaxed text-slate-500">
+   <div className="mt-4 border-t border-white/5 px-4 pt-3 text-[11px] leading-relaxed text-slate-500">
   <p>
     Plan:{" "}
     <span className="font-medium text-slate-300">
