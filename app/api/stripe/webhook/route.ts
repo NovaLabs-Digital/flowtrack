@@ -4,14 +4,6 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-function getSubscriptionIdFromInvoice(invoice: any): string | null {
-  const sub = invoice?.subscription;
-  if (!sub) return null;
-  if (typeof sub === "string") return sub;
-  if (typeof sub === "object" && typeof sub.id === "string") return sub.id;
-  return null;
-}
-
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 const supabaseAdmin = createClient(

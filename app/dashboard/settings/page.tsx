@@ -98,6 +98,27 @@ export default function SettingsPage() {
         .eq("id", user.id)
         .single();
 
+      if (data) {
+        const graceExpired =
+          data.pro_grace_until &&
+          new Date(data.pro_grace_until).getTime() < Date.now();
+
+        const subscriptionInactive =
+          data.stripe_subscription_status &&
+          data.stripe_subscription_status !== "active" &&
+          data.stripe_subscription_status !== "trialing";
+
+        if (data.plan === "pro" && graceExpired && subscriptionInactive) {
+          await supabase
+            .from("profiles")
+            .update({ plan: "free", pro_grace_until: null })
+            .eq("id", user.id);
+
+          data.plan = "free";
+          data.pro_grace_until = null;
+        }
+      }
+
       setProfile(data);
     }
 
