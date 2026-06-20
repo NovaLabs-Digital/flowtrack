@@ -40,6 +40,49 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleUpgrade() {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        alert("Not logged in");
+        return;
+      }
+
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: session.user.id,
+          email: session.user.email,
+        }),
+      });
+
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        // ignore parse error
+      }
+
+      if (!res.ok) {
+        alert(data?.error ?? `Checkout failed (status ${res.status})`);
+        return;
+      }
+
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        alert("Checkout failed: missing session url");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong.");
+    }
+  }
+
   useEffect(() => {
     async function loadProfile() {
       const {
@@ -104,51 +147,71 @@ export default function SettingsPage() {
               Manage payment method, invoices, and subscription status.
             </p>
 
-            <div className="mt-4 space-y-2 text-sm">
-              <div>
-                Plan:{" "}
-                <span className="font-semibold text-emerald-400">
-                  {profile?.plan?.toUpperCase() || "FREE"}
-                </span>
-              </div>
+            {profile?.plan === "pro" ? (
+              <>
+                <div className="mt-4 space-y-2 text-sm">
+                  <div>
+                    Plan:{" "}
+                    <span className="font-semibold text-emerald-400">PRO</span>
+                  </div>
 
-              <div>
-                Subscription status:{" "}
-                <span
-                  className={
-                    profile?.stripe_subscription_status === "past_due"
-                      ? "font-semibold text-amber-400"
-                      : profile?.stripe_subscription_status === "active"
-                      ? "font-semibold text-emerald-400"
-                      : "text-slate-300"
-                  }
+                  <div>
+                    Subscription status:{" "}
+                    <span
+                      className={
+                        profile?.stripe_subscription_status === "past_due"
+                          ? "font-semibold text-amber-400"
+                          : profile?.stripe_subscription_status === "active"
+                          ? "font-semibold text-emerald-400"
+                          : "text-slate-300"
+                      }
+                    >
+                      {profile?.stripe_subscription_status || "none"}
+                    </span>
+                  </div>
+
+                  {billingIssue && (
+                    <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+                      {graceExpired
+                        ? "Your Pro access has expired. Update billing to restore Pro features."
+                        : "Payment issue detected. Update billing to restore or keep Pro access."}
+                    </div>
+                  )}
+
+                  {profile?.pro_grace_until && (
+                    <div className="text-amber-400">
+                      Grace access active until{" "}
+                      {new Date(profile.pro_grace_until).toLocaleDateString()}.
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={handleManageBilling}
+                  className="mt-4 rounded-lg border border-slate-600 px-3 py-2 text-sm hover:bg-slate-800"
                 >
-                  {profile?.stripe_subscription_status || "none"}
-                </span>
+                  Open Billing Portal
+                </button>
+              </>
+            ) : (
+              <div className="mt-4 space-y-2 text-sm">
+                <div>
+                  Plan:{" "}
+                  <span className="font-semibold text-slate-300">FREE</span>
+                </div>
+
+                <p className="text-slate-400">
+                  Upgrade to Pro for custom date ranges, advanced reports, and up to 120 days of history.
+                </p>
+
+                <button
+                  onClick={handleUpgrade}
+                  className="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+                >
+                  Upgrade to Pro
+                </button>
               </div>
-
-              {billingIssue && (
-                <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
-                  {graceExpired
-                    ? "Your Pro access has expired. Update billing to restore Pro features."
-                    : "Payment issue detected. Update billing to restore or keep Pro access."}
-                </div>
-              )}
-
-              {profile?.pro_grace_until && (
-                <div className="text-amber-400">
-                  Grace access active until{" "}
-                  {new Date(profile.pro_grace_until).toLocaleDateString()}.
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={handleManageBilling}
-              className="mt-4 rounded-lg border border-slate-600 px-3 py-2 text-sm hover:bg-slate-800"
-            >
-              Open Billing Portal
-            </button>
+            )}
           </section>
 
           <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-5">

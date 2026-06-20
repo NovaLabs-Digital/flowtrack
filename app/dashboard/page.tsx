@@ -2011,9 +2011,10 @@ if (checkingOnboarding) {
             <div className="mt-auto pt-3 border-t border-slate-800 no-print">
               <button
                 type="button"
+                onClick={() => router.push("/dashboard/settings")}
                 className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-900 text-slate-300 text-[11px]"
               >
-               
+                Settings
               </button>
             </div>
 
@@ -2083,13 +2084,6 @@ if (checkingOnboarding) {
               
               </span>
 
-              <button
-                onClick={() => router.push("/dashboard/settings")}
-                className="rounded-lg border border-slate-600 px-3 py-1 hover:bg-slate-800"
-              >
-                Settings
-              </button>
-          
               {!isPro && (
                   <div className="mt-1 text-[11px] text-slate-400">
                     Want custom ranges & up to 120 days?{" "}
