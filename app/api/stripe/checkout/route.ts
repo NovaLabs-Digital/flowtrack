@@ -109,8 +109,5 @@ export async function POST(req: Request) {
       { error: e?.message ?? "Stripe error" },
       { status: 500 }
     );
-console.log("STRIPE_SECRET_KEY prefix:", process.env.STRIPE_SECRET_KEY?.slice(0, 7));
-
-
   }
 }

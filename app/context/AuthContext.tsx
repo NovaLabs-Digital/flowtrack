@@ -27,6 +27,7 @@ const PUBLIC_ROUTES = new Set([
   "/login",
   "/signup",
   "/pro",
+  "/update-password",
 ]);
 
 export function AuthProvider({ children }: { children: ReactNode }) {

@@ -60,7 +60,6 @@ export default function LoginPage() {
         return;
       }
 
-      console.log("Login success, user:", data.user);
       setDebugStatus("Login success. Redirecting to dashboard…");
 
       // ✅ Hard redirect so it behaves like when you type /dashboard manually

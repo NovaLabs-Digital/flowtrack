@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-const WAITLIST_URL = "PASTE_YOUR_GOOGLE_FORM_LINK_HERE";
+const SIGNUP_URL = "/signup";
 
 export default function HomePage() {
   return (
@@ -48,12 +48,10 @@ export default function HomePage() {
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <a
-                  href={WAITLIST_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href={SIGNUP_URL}
                   className="inline-flex items-center justify-center rounded-lg bg-emerald-500 px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400"
                 >
-                  Request Beta Access
+                  Get Started Free
                 </a>
 
                 <Link

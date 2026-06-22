@@ -175,47 +175,6 @@ function BudgetStatusIcon({ status }: { status: "ok" | "near" | "over" | "none" 
       return false;
     }
 
-      function UpgradeModal({
-            open,
-            onClose,
-          }: {
-            open: boolean;
-            onClose: () => void;
-          }) {
-            if (!open) return null;
-
-            return (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-                <div className="w-full max-w-md rounded-xl bg-slate-950 border border-slate-800 p-6">
-                  <h2 className="text-lg font-semibold mb-2"> Pro Pro</h2>
-                  <p className="text-sm text-slate-400 mb-4">
-                    Get custom date ranges, advanced PDF reports, and up to 120 days of history.
-                  </p>
-
-                  <div className="flex justify-end gap-3">
-                    <button
-                      onClick={onClose}
-                      className="px-4 py-2 text-sm rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800"
-                    >
-                      Maybe later
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        onClose();
-                        // Stripe will go here in Step 2
-                        alert("Stripe checkout coming next 🚀");
-                      }}
-                      className="px-4 py-2 text-sm rounded-md bg-emerald-600 text-black hover:bg-emerald-500"
-                    >
-                      Upgrade to Pro
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          }
-
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -755,8 +714,10 @@ useEffect(() => {
 
     const { data, error } = await supabase
       .from("transactions")
-      .select("*")
+      .select("id, user_id, created_at, date, type, amount, category, description")
       .eq("user_id", user.id)
+      .gte("date", periodStart)
+      .lte("date", periodEnd)
       .order("date", { ascending: false });
 
     if (error) {
@@ -766,24 +727,12 @@ useEffect(() => {
       return;
     }
 
-    const filtered = (data ?? []).filter((t) => {
-      return t.date >= periodStart && t.date <= periodEnd;
-    });
-
-console.log("USER ID:", user.id);
-console.log("ALL TRANSACTIONS FROM SUPABASE:", data);
-console.log("PERIOD:", periodStart, periodEnd);
-console.log("FILTERED:", filtered);
-
     setTransactions((data ?? []) as Transaction[]);
     setLoading(false);
   }
 
   loadTransactions();
 }, [authLoading, user?.id, periodStart, periodEnd]);
-
-
-//INSERT VARIABLE HERE?// const effectiveStartdate....
 
 
 // ---- LOGOUT ----
