@@ -46,8 +46,7 @@ export async function POST(req: NextRequest) {
 
     const userId = session.metadata?.userId;
     if (!userId) {
-      // Don’t fail the webhook; just report missing mapping
-      return NextResponse.json({ received: true, missingUserId: true });
+      return NextResponse.json({ received: true });
     }
 
     const customerId =
@@ -81,17 +80,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({
-      received: true,
-      updated: true,
-      userId,
-      customerId,
-      subscriptionId,
-    });
+    return NextResponse.json({ received: true });
   }
 
-  // ✅ Handle subscription.created so it never 500s
-  // (We don’t require userId here unless you explicitly set subscription metadata.)
   if (event.type === "customer.subscription.created") {
     const sub = event.data.object as Stripe.Subscription;
 
@@ -104,10 +95,8 @@ export async function POST(req: NextRequest) {
 
     const userId = sub.metadata?.userId;
 
-    // If no userId in subscription metadata, do NOT fail.
-    // We'll rely on checkout.session.completed (which should have metadata.userId).
     if (!userId) {
-      return NextResponse.json({ received: true, missingUserId: true });
+      return NextResponse.json({ received: true });
     }
 
     const { error } = await supabaseAdmin
@@ -127,7 +116,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ received: true, updated: true, userId });
+    return NextResponse.json({ received: true });
   }
 
 // ✅ Start grace period when payment fails
@@ -140,7 +129,7 @@ if (event.type === "invoice.payment_failed") {
     : (invoice as any).subscription?.id ?? null;
 
   if (!subscriptionId) {
-    return NextResponse.json({ received: true, missingSubscriptionId: true });
+    return NextResponse.json({ received: true });
   }
 
   const graceUntil = new Date();
@@ -161,7 +150,7 @@ if (event.type === "invoice.payment_failed") {
     );
   }
 
-  return NextResponse.json({ received: true, graceStarted: true });
+  return NextResponse.json({ received: true });
 }
 
 // ✅ Restore Pro when invoice is paid
@@ -174,7 +163,7 @@ if (event.type === "invoice.payment_succeeded") {
     : (invoice as any).subscription?.id ?? null;
 
   if (!subscriptionId) {
-    return NextResponse.json({ received: true, missingSubscriptionId: true });
+    return NextResponse.json({ received: true });
   }
 
   const { error } = await supabaseAdmin
@@ -193,7 +182,7 @@ if (event.type === "invoice.payment_succeeded") {
     );
   }
 
-  return NextResponse.json({ received: true, restored: true });
+  return NextResponse.json({ received: true });
 }
 
   // ✅ Downgrade to free when subscription is canceled
@@ -229,7 +218,7 @@ if (event.type === "invoice.payment_succeeded") {
       );
     }
 
-    return NextResponse.json({ received: true, downgraded: true, userId });
+    return NextResponse.json({ received: true });
   }
 
   return NextResponse.json({

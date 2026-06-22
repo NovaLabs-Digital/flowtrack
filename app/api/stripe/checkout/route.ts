@@ -11,18 +11,28 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-
 function isLiveStripeKey(key: string) {
   return key.startsWith("sk_live_");
 }
 
 export async function POST(req: Request) {
   try {
-    const { userId, email } = await req.json();
+    const token = req.headers.get("Authorization")?.replace("Bearer ", "");
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    if (!userId || !email) {
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const userId = user.id;
+    const email = user.email;
+
+    if (!email) {
       return NextResponse.json(
-        { error: "Missing userId/email" },
+        { error: "No email on authenticated user" },
         { status: 400 }
       );
     }
@@ -43,9 +53,6 @@ export async function POST(req: Request) {
       );
     }
 
-
-    
-    // ✅ Pick correct monthly price by environment (test vs live)
     const priceId = isLiveStripeKey(secretKey)
       ? process.env.STRIPE_PRICE_MONTHLY_LIVE
       : process.env.STRIPE_PRICE_MONTHLY_TEST;
@@ -59,11 +66,8 @@ export async function POST(req: Request) {
         },
         { status: 500 }
       );
-
-      
     }
 
-    // ✅ Reuse Stripe customer if we already have one
     const { data: profile, error: profErr } = await supabaseAdmin
       .from("profiles")
       .select("stripe_customer_id")
@@ -83,7 +87,6 @@ export async function POST(req: Request) {
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
 
-      // ✅ Reuse customer when possible
       ...(stripeCustomerId
         ? { customer: stripeCustomerId }
         : { customer_email: email }),
@@ -91,13 +94,8 @@ export async function POST(req: Request) {
       success_url: `${appUrl}/dashboard?upgraded=1`,
       cancel_url: `${appUrl}/dashboard?canceled=1`,
 
-      // ✅ Keep metadata for webhook to update Supabase
       metadata: { userId, email },
-
-      // Optional: helps with correlating sessions in Stripe
       client_reference_id: userId,
-
-      // Optional: duplicates metadata on the subscription object too
       subscription_data: {
         metadata: { userId, email },
       },

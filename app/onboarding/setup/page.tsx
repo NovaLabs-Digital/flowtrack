@@ -40,16 +40,6 @@ export default function OnboardingSetupPage() {
 
     setSaving(true);
 
-    <input
-    value={expenseBudget}
-    onChange={(e) => setExpenseBudget(e.target.value)}
-    type="number"
-    min="0"
-    step="0.01"
-    className="w-full rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none focus:border-blue-400"
-    placeholder="Monthly budget (optional)"
-    />
-
     const today = new Date().toISOString().slice(0, 10);
 
     const firstIncomeCategory = incomeTitle.trim() || "Main income";
@@ -83,23 +73,26 @@ export default function OnboardingSetupPage() {
       return;
     }
 
-    const { error: categoryError } = await supabase
+    const { data: existingCats } = await supabase
       .from("categories")
-      .insert([
-        {
-          user_id: user.id,
-          name: firstIncomeCategory,
-          type: "income",
-        },
-        {
-          user_id: user.id,
-          name: firstExpenseCategory,
-          type: "expense",
-        },
-      ]);
+      .select("name")
+      .eq("user_id", user.id);
 
-    if (categoryError) {
-      console.error("Failed to save setup categories:", categoryError);
+    const existingNames = new Set((existingCats ?? []).map((c: any) => c.name));
+
+    const newCategories = [
+      { user_id: user.id, name: firstIncomeCategory, type: "income" as const },
+      { user_id: user.id, name: firstExpenseCategory, type: "expense" as const },
+    ].filter((c) => !existingNames.has(c.name));
+
+    if (newCategories.length > 0) {
+      const { error: categoryError } = await supabase
+        .from("categories")
+        .insert(newCategories);
+
+      if (categoryError) {
+        console.error("Failed to save setup categories:", categoryError);
+      }
     }
 
     const { error: profileError } = await supabase
@@ -186,6 +179,16 @@ export default function OnboardingSetupPage() {
                 step="0.01"
                 className="w-full rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none focus:border-blue-400"
                 placeholder="Example: 85"
+              />
+
+              <input
+                value={expenseBudget}
+                onChange={(e) => setExpenseBudget(e.target.value)}
+                type="number"
+                min="0"
+                step="0.01"
+                className="w-full rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none focus:border-blue-400"
+                placeholder="Monthly budget (optional)"
               />
             </div>
           </div>
