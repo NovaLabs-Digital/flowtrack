@@ -158,9 +158,12 @@ export default function SettingsPage() {
         <div className="mt-8 grid gap-4 sm:gap-5 md:grid-cols-2">
           <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-5">
             <h2 className="text-base font-semibold sm:text-lg">Account</h2>
-            <p className="mt-2 text-sm text-slate-400">
-              Profile and login settings will live here.
-            </p>
+            <div className="mt-3 space-y-1 text-sm">
+              <div className="text-slate-400">
+                Email:{" "}
+                <span className="text-slate-200">{userEmail}</span>
+              </div>
+            </div>
           </section>
 
           <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-5">
@@ -236,41 +239,6 @@ export default function SettingsPage() {
             )}
           </section>
 
-          <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-5">
-            <h2 className="text-base font-semibold sm:text-lg">Preferences</h2>
-            <p className="mt-2 text-sm text-slate-400">
-              Default date range, categories, and display options.
-            </p>
-
-            <button
-            className="mt-4 rounded-lg border border-slate-600 px-3 py-2 text-sm hover:bg-slate-800"
-            disabled
-            >
-            Preferences coming next
-            </button>
-
-            <button
-            className="mt-4 rounded-lg border border-slate-600 px-3 py-2 text-sm hover:bg-slate-800"
-            disabled
-            >
-            Profile tools coming next
-            </button>
-
-            <button
-            className="mt-4 rounded-lg border border-slate-600 px-3 py-2 text-sm hover:bg-slate-800"
-            disabled
-            >
-            Security tools coming next
-            </button>
-
-          </section>
-
-          <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-5">
-            <h2 className="text-base font-semibold sm:text-lg">Security</h2>
-            <p className="mt-2 text-sm text-slate-400">
-              Password and account security options.
-            </p>
-          </section>
         </div>
       </div>
     </main>

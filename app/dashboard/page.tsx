@@ -2126,15 +2126,6 @@ if (checkingOnboarding) {
                     Print / PDF
                     </button>
 
-                   
-              {/* Dark Mode (placeholder) */}
-              <button
-                className="no-print px-3 py-1 rounded-full border border-slate-600 text-xs text-slate-300 cursor-not-allowed opacity-60"
-                disabled
-              >
-                Dark mode
-              </button>
-
               {/* Logged in user */}
               {userEmail && (
                 <span className="px-2 py-1 rounded-full bg-slate-900 border border-slate-700">
@@ -2594,144 +2585,178 @@ if (checkingOnboarding) {
         {/* ========================= */}
         <aside className="w-72 border-l border-slate-800 bg-slate-950/80 flex flex-col">
           <div className="px-4 py-4 border-b border-slate-800">
-            <h2 className="text-sm font-semibold">Preliminary report</h2>
-            <p className="text-[11px] text-slate-400">
-              Snapshot of your {activeRangeLabel}.
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded-md bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center">
+                <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2a4 4 0 0 0-4 4c0 2 1 3 2 4l-5 8h14l-5-8c1-1 2-2 2-4a4 4 0 0 0-4-4z" />
+                  <path d="M12 18v4" />
+                </svg>
+              </div>
+              <h2 className="text-sm font-semibold">AI Financial Coach</h2>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Personalized insights for your finances
             </p>
           </div>
 
-          <div className="flex-1 px-4 py-4 space-y-4 text-[11px] text-slate-300 overflow-auto">
-            {/* OVERALL STATUS CARD */}
-            <div className="bg-slate-900 rounded-lg border border-slate-800 p-3">
-              <h3 className="font-medium mb-1 text-xs">Overall status</h3>
-              <p>
-                Your current status is{" "}
-                <span
-                  className={
-                    status === "OK"
-                      ? "text-emerald-400"
-                      : status === "WARNING"
-                      ? "text-amber-300"
-                      : "text-red-400"
-                  }
-                >
-                  {status}
-                </span>
-                .
-              </p>
-              <p className="mt-1 text-slate-400">
-                Based on your net result over the {activeRangeLabel}:
-              </p>
-              <ul className="list-disc list-inside mt-1 space-y-1 text-slate-400">
-                <li>Income: {formatCurrency(income)}</li>
-                <li>Spending: {formatCurrency(expenses)}</li>
-                <li>
-                  Net:{" "}
-                  <span
-                    className={
-                      net >= 0
-                        ? "text-emerald-400 font-semibold"
-                        : "text-red-400 font-semibold"
-                    }
-                  >
-                    {formatCurrency(net)}
-                  </span>
-                </li>
-              </ul>
-            </div>
+          <div className="flex-1 px-3 py-3 space-y-3 text-[11px] text-slate-300 overflow-auto">
 
-            {/* SAVINGS RATE CARD */}
-            <div className="bg-slate-900 rounded-lg border border-slate-800 p-3">
-              <h3 className="font-medium mb-1 text-xs">Savings rate</h3>
-              {savingsRate === null ? (
-                <p className="text-slate-400">
-                  We couldn&apos;t calculate a savings rate yet. Add at least
-                  one income and one expense entry.
-                </p>
-              ) : (
-                <>
-                  <p className="text-lg font-semibold mb-1">
-                    {savingsRate}%
-                  </p>
+            {/* ── AI COACH CARDS ── */}
 
-                  <p className="text-slate-400">
-                    This is how much of your income you&apos;re keeping after
-                    expenses in the last {activeRangeLabel} days.
-                  </p>
+            {transactions.length === 0 ? (
+              <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-4 text-center">
+                <div className="text-slate-500 text-xs">
+                  Your AI Coach will begin analyzing once you add a few transactions.
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* TODAY'S INSIGHT */}
+                <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-3">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Today&apos;s Insight</span>
+                  </div>
+                  {savingsRate !== null && savingsRate > 0 ? (
+                    <p className="text-slate-300 leading-relaxed">
+                      You&apos;re saving <span className="font-semibold text-emerald-400">{savingsRate}%</span> of your income this period.
+                      {savingsRate >= 20
+                        ? " That's excellent discipline — you're ahead of most benchmarks."
+                        : savingsRate >= 10
+                        ? " Solid progress. A small cut in your top category could push you higher."
+                        : " Consider reviewing your largest expense category to find room to save."}
+                    </p>
+                  ) : (
+                    <p className="text-slate-400 leading-relaxed">
+                      Your first insight will appear after several days of activity.
+                    </p>
+                  )}
+                </div>
 
-                  <p className="mt-1 text-slate-400">
-                    A simple reference for many young professionals is{" "}
-                    <span className="text-emerald-300 font-medium">
-                      10–20% saved
-                    </span>
-                    . This is not financial advice, just a reference point.
-                  </p>
-                </>
-              )}
-            </div>
-
-            {/* TOP EXPENSE CATEGORIES CARD */}
-            <div className="bg-slate-900 rounded-lg border border-slate-800 p-3">
-              <h3 className="font-medium mb-1 text-xs">
-                Where your money actually goes
-              </h3>
-
-              {topCategories.length === 0 ? (
-                <p className="text-slate-400">
-                  You haven&apos;t added any expenses yet. As you log spending,
-                  we&apos;ll show your top categories here.
-                </p>
-              ) : (
-                <>
-                  <p className="text-slate-400 mb-2">
-                    Biggest expense categories in the last {activeRangeLabel} days:
-                  </p>
-                  <ul className="space-y-1">
-                    {topCategories.map(([catName, amount]) => (
-                      <li
-                        key={catName}
-                        className="flex items-center justify-between"
-                      >
-                        <span className="truncate pr-2">{catName}</span>
-                        <span className="font-medium">
-                          {formatCurrency(amount)}
+                {/* SPENDING ALERT */}
+                {topCategories.length > 0 && (
+                  <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-3">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Spending Alert</span>
+                    </div>
+                    <p className="text-slate-300 leading-relaxed">
+                      <span className="font-semibold">{topCategories[0][0]}</span> is your biggest expense at{" "}
+                      <span className="font-semibold text-amber-300">{formatCurrency(topCategories[0][1])}</span>.
+                      {topCategories.length > 1
+                        ? ` Followed by ${topCategories[1][0]} at ${formatCurrency(topCategories[1][1])}.`
+                        : ""}
+                    </p>
+                    {income > 0 && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="flex-1 h-1 rounded-full bg-slate-800 overflow-hidden">
+                          <div
+                            className="h-full bg-amber-400/80 rounded-full"
+                            style={{ width: `${Math.min(Math.round((topCategories[0][1] / income) * 100), 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-slate-500">
+                          {Math.round((topCategories[0][1] / income) * 100)}% of income
                         </span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="mt-2 text-slate-400">
-                    These are usually the best places to look first if you want
-                    to free up money.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* SAVINGS GOAL PROGRESS */}
+                <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-3">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Savings Goal</span>
+                  </div>
+                  <div className="flex items-baseline justify-between mb-1.5">
+                    <span className="text-slate-300 font-medium">Emergency Fund</span>
+                    <span className="text-[10px] text-slate-500">
+                      {net > 0 ? formatCurrency(net) : "$0.00"} / $1,000
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-500/80 rounded-full transition-all"
+                      style={{ width: `${Math.min(net > 0 ? (net / 1000) * 100 : 0, 100)}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-slate-500 leading-relaxed">
+                    {net > 0
+                      ? `${Math.round(Math.min((net / 1000) * 100, 100))}% toward your first milestone. Keep it up.`
+                      : "Start by building a positive net balance to fund your goal."}
                   </p>
-                </>
-              )}
+                </div>
+
+                {/* FORECAST */}
+                <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-3">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">30-Day Forecast</span>
+                  </div>
+                  {income > 0 ? (
+                    <>
+                      <div className="flex items-baseline gap-2 mb-1">
+                        <span className={`text-lg font-semibold ${net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                          {formatCurrency(net)}
+                        </span>
+                        <span className="text-[10px] text-slate-500">projected net</span>
+                      </div>
+                      <p className="text-slate-500 leading-relaxed">
+                        Based on your current income and spending patterns over this period.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-slate-500 leading-relaxed">
+                      Add income and expenses to see your projected trend.
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* ASK YOUR COACH */}
+            <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Ask Your Coach</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  disabled
+                  className="flex-1 rounded-lg bg-slate-950 border border-slate-800 px-2.5 py-1.5 text-[11px] text-slate-500 placeholder-slate-600 cursor-not-allowed"
+                  placeholder="How can I save more this month?"
+                />
+              </div>
+              <p className="mt-1.5 text-[10px] text-slate-600">
+                AI chat available soon on Pro.
+              </p>
             </div>
 
-            {/* BUDGET CARD */}
-            <div className="bg-slate-900 rounded-lg border border-slate-800 p-3">
-              <h3 className="font-medium mb-1 text-xs">Budgets (Monthly)</h3>
-              <p className="text-slate-400 mb-2">
-                Set a simple limit for your key categories. We&apos;ll show how
-                much you&apos;ve used so far.
-              </p>
+            {/* ── DIVIDER ── */}
+            <div className="border-t border-slate-800/60 my-1" />
 
-              {/* Limited height so this area doesn't grow forever */}
+            {/* ── BUDGETS ── */}
+            <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-3">
+              <h3 className="font-medium mb-2 text-xs">Monthly Budgets</h3>
+
               <div className="space-y-2 pr-1 max-h-56 overflow-y-auto budget-scroll">
                 {categories.map((cat) => {
                   const budget = categoryBudgets[cat.name] ?? 0;
                   const spent = expenseByCategory[cat.name] ?? 0;
                   const pct = budget > 0 ? spent / budget : 0;
-                  const status =
+                  const budgetStatus =
                     budget <= 0 ? "none" :
                     pct > 1 ? "over" :
                     pct >= 0.8 ? "near" :
                     "ok";
 
                   return (
-                     <div key={cat.name} className="space-y-1">
+                    <div key={cat.name} className="space-y-1">
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="truncate pr-2 flex items-center gap-1">
-                          <BudgetStatusIcon status={status} />
+                          <BudgetStatusIcon status={budgetStatus} />
                           {cat.name}
                         </span>
                         <input
@@ -2756,22 +2781,21 @@ if (checkingOnboarding) {
                         <>
                           <div className="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
                             <div
-                              className={`h-full ${
-                                pct < 80
+                              className={`h-full rounded-full ${
+                                pct < 0.8
                                   ? "bg-emerald-500"
-                                  : pct < 100
+                                  : pct < 1
                                   ? "bg-amber-400"
                                   : "bg-red-500"
                               }`}
-                              style={{ width: `${pct}%` }}
+                              style={{ width: `${Math.min(pct * 100, 100)}%` }}
                             />
                           </div>
-                          <div className="flex justify-between text-[10px] text-slate-400">
+                          <div className="flex justify-between text-[10px] text-slate-500">
                             <span>
-                              {formatCurrency(spent)} /{" "}
-                              {formatCurrency(budget)}
+                              {formatCurrency(spent)} / {formatCurrency(budget)}
                             </span>
-                            <span>{pct}% used</span>
+                            <span>{Math.round(pct * 100)}% used</span>
                           </div>
                         </>
                       )}
@@ -2779,81 +2803,30 @@ if (checkingOnboarding) {
                   );
                 })}
               </div>
-
-              <p className="mt-2 text-[10px] text-slate-500">
-                Tip: Start with just 3-5 key categories. Too many budgets =
-                overwhelm.
-              </p>
             </div>
 
-            {/* PRO PLAN STATUS CARD */}
-            <div className="bg-slate-900 rounded-lg border border-emerald-600/60 p-3">
-              <h3 className="font-medium mb-1 text-xs text-emerald-300">
-                {isPro ? "Pro plan active" : "Free plan"}
-              </h3>
-
-              {isPro ? (
-                <>
-                  <p className="text-slate-300">
-                    You&apos;re currently using the{" "}
-                    <span className="font-semibold text-amber-300">Pro</span>{" "}
-                    plan.
-                  </p>
-                  <p className="mt-1 text-slate-400">
-                    Tracking the last{" "}
-                    <span className="font-semibold text-emerald-300">
-                      {activeRangeLabel} days
-                    </span>{" "}
-                    of activity with advanced dashboards.
-                  </p>
-                  <p className="mt-1 text-slate-500">
-                    More Pro features like reports and trends will appear here
-                    as we build them.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-slate-300">
-                    You&apos;re currently on the{" "}
-                    <span className="font-semibold">Free</span> plan.
-                  </p>
-                  <p className="mt-1 text-slate-400">
-                    Free tracks the last{" "}
-                    <span className="font-semibold">{windowDays} days</span>{" "}
-                    only.
-                  </p>
-                  <p className="mt-1 text-slate-500">
-                    Upgrade to Pro to unlock a longer history window and richer
-                    insights here.
-                  </p>
-                </>
-              )}
-            </div>
-
-            {/* PIE CHART CARD */}
-            <div className="bg-slate-900 rounded-lg border border-slate-800 p-4 flex flex-col items-center mt-2">
-              <div className="text-[11px] text-slate-400 mb-2">
-                Spending vs income {activeRangeLabel}
+            {/* ── DONUT CHART ── */}
+            <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-3 flex flex-col items-center">
+              <div className="text-[10px] font-medium uppercase tracking-wide text-slate-500 mb-3">
+                Spending vs Income
               </div>
 
               <div className="relative flex items-center justify-center mb-3">
-                <svg viewBox="0 0 36 36" className="w-24 h-24">
-                  {/* Green ring = total income */}
+                <svg viewBox="0 0 36 36" className="w-20 h-20">
                   <circle
-                    className="text-emerald-500"
+                    className="text-emerald-500/30"
                     stroke="currentColor"
-                    strokeWidth="7"
+                    strokeWidth="6"
                     fill="none"
                     cx="18"
                     cy="18"
                     r="15.915"
                   />
-                  {/* Red slice = spending portion */}
                   <circle
                     className="text-red-400"
                     stroke="currentColor"
-                    strokeWidth="7"
-                    strokeLinecap="butt"
+                    strokeWidth="6"
+                    strokeLinecap="round"
                     fill="none"
                     cx="18"
                     cy="18"
@@ -2868,52 +2841,36 @@ if (checkingOnboarding) {
                       ? `${Math.round(Math.min(spendingRatio, 1) * 100)}%`
                       : "--"}
                   </div>
-                  <div className="text-[10px] text-slate-400">
-                    of income used
-                  </div>
+                  <div className="text-[9px] text-slate-500">used</div>
                 </div>
               </div>
 
-              <div className="w-full flex justify-between text-[11px] mb-2">
-                <div className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                  <span>Income</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-red-400" />
-                  <span>Spending</span>
-                </div>
-              </div>
-
-              <div className="w-full text-[11px] text-slate-300 space-y-1">
-                <p>
-                  Income:{" "}
-                  <span className="font-semibold">
-                    {formatCurrency(income)}
+              <div className="w-full space-y-1 text-[11px]">
+                <div className="flex justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    Income
                   </span>
-                </p>
-                <p>
-                  Spending:{" "}
-                  <span className="font-semibold">
-                    {formatCurrency(expenses)}
+                  <span className="font-medium">{formatCurrency(income)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                    Spending
                   </span>
-                </p>
-                <p>
-                  Net:{" "}
-                  <span
-                    className={
-                      net >= 0
-                        ? "text-emerald-400 font-semibold"
-                        : "text-red-400 font-semibold"
-                    }
-                  >
+                  <span className="font-medium">{formatCurrency(expenses)}</span>
+                </div>
+                <div className="flex justify-between pt-1 border-t border-slate-800/60">
+                  <span className="text-slate-400">Net</span>
+                  <span className={`font-semibold ${net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                     {formatCurrency(net)}
                   </span>
-                </p>
+                </div>
               </div>
             </div>
+
           </div>
-          </aside>  {/* END RIGHT SIDEBAR */}
+        </aside>  {/* END RIGHT SIDEBAR */}
         </div>   {/* close flex wrapper */}
         
           
