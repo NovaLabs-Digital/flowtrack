@@ -226,7 +226,7 @@ export default function SettingsPage() {
                 </div>
 
                 <p className="text-slate-400">
-                  Upgrade to Pro for custom date ranges, advanced reports, and up to 120 days of history.
+                  Upgrade to Pro for custom date ranges, advanced reports, and up to 180 days of history.
                 </p>
 
                 <button

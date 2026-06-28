@@ -186,7 +186,7 @@ function BudgetStatusIcon({ status }: { status: "ok" | "near" | "over" | "none" 
                 <div className="w-full max-w-md rounded-xl bg-slate-950 border border-slate-800 p-6">
                   <h2 className="text-lg font-semibold mb-2"> Pro Pro</h2>
                   <p className="text-sm text-slate-400 mb-4">
-                    Get custom date ranges, advanced PDF reports, and up to 120 days of history.
+                    Get custom date ranges, advanced PDF reports, and up to 180 days of history.
                   </p>
 
                   <div className="flex justify-end gap-3">
@@ -267,7 +267,7 @@ export default function DashboardPage() {
     // ISO date string YYYY-MM-DD for Supabase filter
 
   // ---- TIME WINDOW (FREE vs PRO) ----
-  const DAY_OPTIONS = isPro ? [7, 14, 30, 60, 90, 120] : [7, 14, 30];
+  const DAY_OPTIONS = isPro ? [7, 14, 30, 60, 90, 180] : [7, 14, 30];
   const [windowDays, setWindowDays] = useState<number>(isPro ? 90 : 30);
 
   const [showUpgrade, setShowUpgrade] = useState(false);
@@ -675,7 +675,7 @@ async function handleApplyCustomRange() {
 }
 
 // plan limit (independent of dropdown)
-const planMaxDays = isPro ? 120 : 30;
+const planMaxDays = isPro ? 180 : 30;
 
 const planWindowStartDate = new Date(
   today.getFullYear(),
@@ -1408,7 +1408,7 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
             <div>
               <div className="font-semibold">Pro Plan</div>
               <div className="text-xs text-slate-400">
-                120-day timeline • Custom ranges • PDF reports • Budgets insights
+                180-day timeline • Custom ranges • PDF reports • Budgets insights
               </div>
             </div>
             <div className="text-right">
@@ -2030,7 +2030,7 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
           
               {!isPro && (
                   <div className="mt-1 text-[11px] text-slate-400">
-                    Want custom ranges & up to 120 days?{" "}
+                    Want custom ranges & up to 180 days?{" "}
                     <button
                       onClick={() => openUpgrade("Custom date ranges and extended history are Pro features.")}
                       className="text-emerald-400 hover:underline"

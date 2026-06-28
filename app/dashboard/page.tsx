@@ -127,6 +127,34 @@ function getSpendingRatio(income: number, expenses: number) {
   return Math.min(Math.max(ratio, 0), 2);
 }
 
+function Sparkline({ data, color, height = 32, width = 100 }: { data: number[]; color: string; height?: number; width?: number }) {
+  if (data.length < 2) {
+    return (
+      <svg width={width} height={height} className="opacity-20">
+        <line x1="0" y1={height / 2} x2={width} y2={height / 2} stroke={color} strokeWidth="1.5" strokeDasharray="4 3" />
+      </svg>
+    );
+  }
+
+  const max = Math.max(...data, 1);
+  const step = width / (data.length - 1);
+  const pad = 2;
+  const usable = height - pad * 2;
+
+  const points = data
+    .map((v, i) => `${i * step},${pad + usable - (v / max) * usable}`)
+    .join(" ");
+
+  const fillPoints = `0,${height} ${points} ${width},${height}`;
+
+  return (
+    <svg width={width} height={height} className="overflow-visible">
+      <polygon points={fillPoints} fill={color} opacity="0.08" />
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 type ReportRangeMode = "thisMonth" | "lastNDays" | "current" | "custom" | "lastMonth";
 
 
@@ -230,7 +258,7 @@ export default function DashboardPage() {
     // ISO date string YYYY-MM-DD for Supabase filter
 
   // ---- TIME WINDOW (FREE vs PRO) ----
-  const DAY_OPTIONS = isPro ? [7, 14, 30, 60, 90, 120] : [7, 14, 30];
+  const DAY_OPTIONS = isPro ? [7, 14, 30, 60, 90, 180] : [7, 14, 30];
   const [windowDays, setWindowDays] = useState<number>(isPro ? 90 : 30);
 
   const [showUpgrade, setShowUpgrade] = useState(false);
@@ -668,7 +696,7 @@ async function handleApplyCustomRange() {
 }
 
 // plan limit (independent of dropdown)
-const planMaxDays = isPro ? 120 : 30;
+const planMaxDays = isPro ? 180 : 30;
 
 const planWindowStartDate = new Date(
   today.getFullYear(),
@@ -1328,6 +1356,24 @@ useEffect(() => {
   // ---- DERIVED VALUES ----
   const { income, expenses, net } = summarize(transactions);
 
+  const sparklineData = (() => {
+    const incomeByDay: Record<string, number> = {};
+    const expenseByDay: Record<string, number> = {};
+    for (const t of transactions) {
+      if (t.type === "income") incomeByDay[t.date] = (incomeByDay[t.date] ?? 0) + t.amount;
+      else expenseByDay[t.date] = (expenseByDay[t.date] ?? 0) + t.amount;
+    }
+    const allDays = Array.from(new Set([...Object.keys(incomeByDay), ...Object.keys(expenseByDay)])).sort();
+    let runningNet = 0;
+    const incomeArr = allDays.map((d) => incomeByDay[d] ?? 0);
+    const expenseArr = allDays.map((d) => expenseByDay[d] ?? 0);
+    const netArr = allDays.map((d) => {
+      runningNet += (incomeByDay[d] ?? 0) - (expenseByDay[d] ?? 0);
+      return runningNet;
+    });
+    return { income: incomeArr, expense: expenseArr, net: netArr };
+  })();
+
   let status: "OK" | "WARNING" | "DANGER" = "OK";
   if (net < 0) status = "DANGER";
   else if (net < 300) status = "WARNING";
@@ -1424,7 +1470,7 @@ if (checkingOnboarding) {
             <div>
               <div className="font-semibold">Pro Plan</div>
               <div className="text-xs text-slate-400">
-                120-day timeline • Custom ranges • PDF reports • Budgets insights
+                180-day timeline • Custom ranges • PDF reports • Budgets insights
               </div>
             </div>
             <div className="text-right">
@@ -1589,7 +1635,8 @@ if (checkingOnboarding) {
               <div className="flex flex-col gap-3 min-h-0">
                 {/* INCOME (top 1/3) */}
                 <div className="border border-slate-800 rounded-xl bg-slate-900/20 overflow-hidden">
-                  <div className="text-slate-400 uppercase text-[10px] px-3 py-2 border-b border-slate-800">
+                  <div className="text-slate-400 uppercase text-[10px] px-3 py-2 border-b border-slate-800 flex items-center gap-1.5">
+                    <svg className="w-3 h-3 text-emerald-400/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></svg>
                     Income
                   </div>
 
@@ -1609,8 +1656,6 @@ if (checkingOnboarding) {
                       .map((cat) => {
                         const isSelected = selectedCategory === cat.name;
                         const isExpanded = expandedCategory === cat.name;
-                        const typeColor = "text-emerald-300";
-
                         return (
                           <div
                             key={cat.name}
@@ -1627,7 +1672,7 @@ if (checkingOnboarding) {
                               e.dataTransfer.effectAllowed = "move";
                             }}
                             onDragEnd={() => setDraggingName(null)}
-                            
+
                             onDrop={(e) => {
                               e.preventDefault();
                               if (!draggingName) return;
@@ -1643,18 +1688,15 @@ if (checkingOnboarding) {
                             className={`group w-full flex items-center justify-between px-3 py-1.5 text-[11px] rounded-t-lg cursor-move ${
                               isSelected ? "text-emerald-200" : "text-slate-200 hover:bg-slate-800"
                             } ${draggingName === cat.name ? "opacity-60" : ""}`}
-                            
+
                             onClick={() => {
                               setSelectedCategory(cat.name);
                               setExpandedCategory(isExpanded ? null : cat.name);
                             }}
                                 >
 
-                              <div className="flex flex-col min-w-0">
+                              <div className="min-w-0">
                                 <span className="truncate">{cat.name}</span>
-                                <span className={`text-[9px] uppercase tracking-wide ${typeColor}`}>
-                                  Income
-                                </span>
                               </div>
 
                               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity no-print">
@@ -1761,7 +1803,8 @@ if (checkingOnboarding) {
 
                 {/* EXPENSES (bottom 2/3) */}
                 <div className="flex-1 min-h-0 border border-slate-800 rounded-xl bg-slate-900/20 overflow-hidden">
-                  <div className="text-slate-400 uppercase text-[10px] px-3 py-2 border-b border-slate-800">
+                  <div className="text-slate-400 uppercase text-[10px] px-3 py-2 border-b border-slate-800 flex items-center gap-1.5">
+                    <svg className="w-3 h-3 text-red-400/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6" /><polyline points="17 18 23 18 23 12" /></svg>
                     Expenses
                   </div>
 
@@ -1778,8 +1821,6 @@ if (checkingOnboarding) {
                       .map((cat) => {
                         const isSelected = selectedCategory === cat.name;
                         const isExpanded = expandedCategory === cat.name;
-                        const typeColor = "text-red-300";
-
                         return (
                           <div
                             key={cat.name}
@@ -1797,29 +1838,26 @@ if (checkingOnboarding) {
                               }}
                               onDragEnd={() => setDraggingName(null)}
                               onDragOver={(e) => e.preventDefault()}
-                              
+
                               onDrop={(e) => {
                                 e.preventDefault();
                                 if (!draggingName) return;
                                 moveCategoryByDrag(draggingName, cat.name, "expense");
-                                setDraggingName(null);  
+                                setDraggingName(null);
                               }}
-                              
+
                               className={`group w-full flex items-center justify-between px-3 py-1.5 text-[11px] rounded-t-lg cursor-move ${
                                 isSelected ? "text-red-200" : "text-slate-200 hover:bg-slate-800"
                               } ${draggingName === cat.name ? "opacity-60" : ""}`}
-                              
+
                               onClick={() => {
                                 if (draggingName) return;
                                 setSelectedCategory(cat.name);
                                 setExpandedCategory(isExpanded ? null : cat.name);
                               }}
                             >
-                              <div className="flex flex-col min-w-0">
+                              <div className="min-w-0">
                                 <span className="truncate">{cat.name}</span>
-                                <span className={`text-[9px] uppercase tracking-wide ${typeColor}`}>
-                                  Expense
-                                </span>
                               </div>
 
                               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity no-print">
@@ -1931,7 +1969,10 @@ if (checkingOnboarding) {
               onSubmit={handleAddCategory}
               className="space-y-1 text-[11px] no-print"
             >
-              <label className="block text-slate-400 px-1">Add category</label>
+              <label className="text-slate-400 px-1 flex items-center gap-1.5">
+                <svg className="w-3 h-3 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>
+                Add category
+              </label>
               <div className="flex flex-wrap gap-1">
                 <input
                   type="text"
@@ -1967,8 +2008,9 @@ if (checkingOnboarding) {
               <button
                 type="button"
                 onClick={() => router.push("/dashboard/settings")}
-                className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-900 text-slate-300 text-[11px]"
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-900 text-slate-300 text-[11px] flex items-center gap-2"
               >
+                <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
                 Settings
               </button>
             </div>
@@ -1999,8 +2041,9 @@ if (checkingOnboarding) {
   <div className="mt-3">
     <a
       href="mailto:support@appflowtrack.com?subject=FlowTrack Support"
-      className="text-[11px] text-slate-500 hover:text-slate-300"
+      className="text-[11px] text-slate-500 hover:text-slate-300 flex items-center gap-1.5"
     >
+      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
       Contact support
     </a>
   </div>
@@ -2041,7 +2084,7 @@ if (checkingOnboarding) {
 
               {!isPro && (
                   <div className="mt-1 text-[11px] text-slate-400">
-                    Want custom ranges & up to 120 days?{" "}
+                    Want custom ranges & up to 180 days?{" "}
                     <button
                       onClick={() => openUpgrade("Custom date ranges and extended history are Pro features.")}
                       className="text-emerald-400 hover:underline"
@@ -2266,82 +2309,60 @@ if (checkingOnboarding) {
           <div className="flex-1 grid grid-rows-[minmax(0,0.18fr),minmax(0,0.82fr)] gap-4 p-4">
             {/* SUMMARY: INCOME / EXPENSES / NET */}
             <div className="grid md:grid-cols-3 gap-4">
-              <div className="bg-slate-900 rounded-xl p-3 border border-slate-800 flex flex-col justify-between">
+              <div className="bg-slate-900 rounded-xl p-3 border border-slate-800 flex flex-col justify-between overflow-hidden">
                 <div>
-                  
-                 <h2 className="text-xs font-medium mb-1 text-slate-300">
-                    Income{" "}
-                    <span className="text-slate-500">
-                      {activeRangeLabel}
-                    </span>
+                  <h2 className="text-[10px] font-medium uppercase tracking-wide text-slate-500 mb-1">
+                    Income
                   </h2>
- 
-
-                  <p className="text-xl font-semibold">
+                  <p className="text-xl font-semibold text-emerald-400">
                     {formatCurrency(income)}
                   </p>
                   {income === 0 && (
-                    <div className="mt-1 text-xs text-slate-400">
-                      No income yet — add your first income entry to get started.
+                    <div className="mt-1 text-[10px] text-slate-500">
+                      No income yet.
                     </div>
                   )}
-
+                </div>
+                <div className="mt-2 -mx-1 -mb-1">
+                  <Sparkline data={sparklineData.income} color="#34d399" width={180} height={28} />
                 </div>
               </div>
 
-              <div className="bg-slate-900 rounded-xl p-3 border border-slate-800 flex flex-col justify-between">
+              <div className="bg-slate-900 rounded-xl p-3 border border-slate-800 flex flex-col justify-between overflow-hidden">
                 <div>
-                  <h2 className="text-xs font-medium mb-1 text-slate-300">
-                  Expenses{" "}
-                  <span className="text-slate-500">
-                    {activeRangeLabel}
-                  </span>
-                </h2>
-
-                  <p className="text-xl font-semibold">
+                  <h2 className="text-[10px] font-medium uppercase tracking-wide text-slate-500 mb-1">
+                    Expenses
+                  </h2>
+                  <p className="text-xl font-semibold text-red-400">
                     {formatCurrency(expenses)}
                   </p>
-
                   {expenses === 0 && (
-                    <div className="mt-1 text-xs text-slate-400">
-                      No expenses recorded — track spending to see where your money goes.
+                    <div className="mt-1 text-[10px] text-slate-500">
+                      No expenses recorded.
                     </div>
                   )}
-
-
+                </div>
+                <div className="mt-2 -mx-1 -mb-1">
+                  <Sparkline data={sparklineData.expense} color="#f87171" width={180} height={28} />
                 </div>
               </div>
 
-              <div className="bg-slate-900 rounded-xl p-3 border border-slate-800 flex flex-col justify-between">
+              <div className="bg-slate-900 rounded-xl p-3 border border-slate-800 flex flex-col justify-between overflow-hidden">
                 <div>
-                  
-                  <h2 className="text-xs font-medium mb-1 text-slate-300">
-                    Net{" "}
-                    <span className="text-slate-500">
-                      {activeRangeLabel}
-                    </span>
+                  <h2 className="text-[10px] font-medium uppercase tracking-wide text-slate-500 mb-1">
+                    Net
                   </h2>
-
-                  <p className="text-xl font-semibold">
+                  <p className={`text-xl font-semibold ${net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                     {formatCurrency(net)}
-
-
-
                   </p>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    Status:{" "}
-                    <span
-                      className={
-                        status === "OK"
-                          ? "text-emerald-400"
-                          : status === "WARNING"
-                          ? "text-amber-300"
-                          : "text-red-400"
-                      }
-                    >
+                  <p className="mt-0.5 text-[10px] text-slate-500">
+                    <span className={status === "OK" ? "text-emerald-400" : status === "WARNING" ? "text-amber-300" : "text-red-400"}>
                       {status}
                     </span>
                   </p>
+                </div>
+                <div className="mt-2 -mx-1 -mb-1">
+                  <Sparkline data={sparklineData.net} color={net >= 0 ? "#34d399" : "#f87171"} width={180} height={28} />
                 </div>
               </div>
             </div>
