@@ -1,11 +1,13 @@
 // app/dashboard/page.tsx
 "use client";
 
-import { useEffect, useState, FormEvent, useRef } from "react";
+import { useEffect, useState, useMemo, FormEvent, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseclient";
 import { useAuth } from "@/app/context/AuthContext";
 import { PRICING } from "@/lib/pricing";
+import { generateFinancialReport } from "@/lib/financial-intelligence";
+import type { FinancialReport } from "@/lib/financial-intelligence";
 
 
 type TransactionType = "income" | "expense";
@@ -1374,6 +1376,23 @@ useEffect(() => {
     return { income: incomeArr, expense: expenseArr, net: netArr };
   })();
 
+  const fieReport: FinancialReport | null = useMemo(() => {
+    if (transactions.length === 0) return null;
+    return generateFinancialReport(
+      transactions.map((t) => ({
+        id: t.id,
+        date: t.date,
+        type: t.type,
+        amount: t.amount,
+        category: t.category,
+        description: t.description,
+      })),
+      categoryBudgets,
+      periodStart,
+      periodEnd
+    );
+  }, [transactions, categoryBudgets, periodStart, periodEnd]);
+
   let status: "OK" | "WARNING" | "DANGER" = "OK";
   if (net < 0) status = "DANGER";
   else if (net < 300) status = "WARNING";
@@ -2624,136 +2643,194 @@ if (checkingOnboarding) {
 
             {/* ── AI COACH CARDS ── */}
 
-            {transactions.length === 0 ? (
+            {!fieReport ? (
               <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-4 text-center">
-                <div className="text-slate-500 text-xs">
-                  Your AI Coach will begin analyzing once you add a few transactions.
-                </div>
+                <p className="text-slate-500 text-xs leading-relaxed">
+                  Add a few transactions to unlock personalized financial insights.
+                </p>
+              </div>
+            ) : fieReport.insights.length === 0 ? (
+              <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-4 text-center">
+                <p className="text-slate-500 text-xs leading-relaxed">
+                  We&apos;re learning your spending habits. More insights will appear as your history grows.
+                </p>
               </div>
             ) : (
               <>
-                {/* TODAY'S INSIGHT */}
-                <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-3">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                    <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Today&apos;s Insight</span>
-                  </div>
-                  {savingsRate !== null && savingsRate > 0 ? (
-                    <p className="text-slate-300 leading-relaxed">
-                      You&apos;re saving <span className="font-semibold text-emerald-400">{savingsRate}%</span> of your income this period.
-                      {savingsRate >= 20
-                        ? " That's excellent discipline — you're ahead of most benchmarks."
-                        : savingsRate >= 10
-                        ? " Solid progress. A small cut in your top category could push you higher."
-                        : " Consider reviewing your largest expense category to find room to save."}
-                    </p>
-                  ) : (
-                    <p className="text-slate-400 leading-relaxed">
-                      Your first insight will appear after several days of activity.
-                    </p>
-                  )}
-                </div>
-
-                {/* SPENDING ALERT */}
-                {topCategories.length > 0 && (
-                  <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-3">
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Spending Alert</span>
-                    </div>
-                    <p className="text-slate-300 leading-relaxed">
-                      <span className="font-semibold">{topCategories[0][0]}</span> is your biggest expense at{" "}
-                      <span className="font-semibold text-amber-300">{formatCurrency(topCategories[0][1])}</span>.
-                      {topCategories.length > 1
-                        ? ` Followed by ${topCategories[1][0]} at ${formatCurrency(topCategories[1][1])}.`
-                        : ""}
-                    </p>
-                    {income > 0 && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <div className="flex-1 h-1 rounded-full bg-slate-800 overflow-hidden">
-                          <div
-                            className="h-full bg-amber-400/80 rounded-full"
-                            style={{ width: `${Math.min(Math.round((topCategories[0][1] / income) * 100), 100)}%` }}
-                          />
-                        </div>
-                        <span className="text-[10px] text-slate-500">
-                          {Math.round((topCategories[0][1] / income) * 100)}% of income
-                        </span>
+                {/* TODAY'S INSIGHT — highest-priority positive insight */}
+                {(() => {
+                  const positive = fieReport.insights.find((i) =>
+                    ["savings_win", "income_growth", "debt_opportunity", "monthly_summary"].includes(i.type)
+                  );
+                  const topInsight = positive ?? fieReport.insights[0];
+                  return (
+                    <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-3">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                        <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Today&apos;s Insight</span>
                       </div>
-                    )}
-                  </div>
-                )}
+                      <p className="text-slate-300 leading-relaxed font-medium mb-1">{topInsight.title}</p>
+                      {topInsight.type === "savings_win" && (
+                        <p className="text-slate-400 leading-relaxed">
+                          Savings rate at <span className="font-semibold text-emerald-400">{(topInsight.payload.savingsRate as number)}%</span>.
+                          {(topInsight.payload.savingsRate as number) >= 20
+                            ? " Excellent discipline — you're ahead of most benchmarks."
+                            : " Solid progress. Small cuts in top categories can push this higher."}
+                        </p>
+                      )}
+                      {topInsight.type === "income_growth" && (
+                        <p className="text-slate-400 leading-relaxed">
+                          Income trending up <span className="font-semibold text-emerald-400">{(topInsight.payload.changePercent as number)}%</span> compared to earlier in this period.
+                        </p>
+                      )}
+                      {topInsight.type === "debt_opportunity" && (
+                        <p className="text-slate-400 leading-relaxed">
+                          You have <span className="font-semibold text-emerald-400">{formatCurrency(topInsight.payload.discretionarySpending as number)}</span> in discretionary funds available this month.
+                        </p>
+                      )}
+                      {topInsight.type === "monthly_summary" && (
+                        <p className="text-slate-400 leading-relaxed">
+                          Net savings of <span className={`font-semibold ${(topInsight.payload.netSavings as number) >= 0 ? "text-emerald-400" : "text-red-400"}`}>{formatCurrency(topInsight.payload.netSavings as number)}</span> with a{" "}
+                          <span className="font-semibold">{(topInsight.payload.savingsRate as number)}%</span> savings rate.
+                        </p>
+                      )}
+                      {!["savings_win", "income_growth", "debt_opportunity", "monthly_summary"].includes(topInsight.type) && (
+                        <p className="text-slate-400 leading-relaxed">
+                          Priority score: <span className="font-semibold">{topInsight.priority}</span>
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
 
-                {/* SAVINGS GOAL PROGRESS */}
+                {/* SPENDING ALERT — highest-priority spending insight */}
+                {(() => {
+                  const alert = fieReport.insights.find((i) =>
+                    ["spending_alert", "category_trend", "unusual_purchase", "budget_warning"].includes(i.type)
+                  );
+                  if (!alert) return null;
+                  return (
+                    <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-3">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                        <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Spending Alert</span>
+                      </div>
+                      <p className="text-slate-300 leading-relaxed font-medium mb-1">{alert.title}</p>
+                      {alert.type === "spending_alert" && typeof alert.payload.category === "string" && (
+                        <>
+                          <p className="text-slate-400 leading-relaxed">
+                            <span className="font-semibold text-amber-300">{alert.payload.category as string}</span> accounts for{" "}
+                            <span className="font-semibold">{alert.payload.percentOfTotal as number}%</span> of your total spending at{" "}
+                            <span className="font-semibold">{formatCurrency(alert.payload.amount as number)}</span>.
+                          </p>
+                          {fieReport.income.total > 0 && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <div className="flex-1 h-1 rounded-full bg-slate-800 overflow-hidden">
+                                <div className="h-full bg-amber-400/80 rounded-full" style={{ width: `${Math.min((alert.payload.percentOfTotal as number), 100)}%` }} />
+                              </div>
+                              <span className="text-[10px] text-slate-500">{alert.payload.percentOfTotal as number}%</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {alert.type === "spending_alert" && typeof alert.payload.direction === "string" && (
+                        <p className="text-slate-400 leading-relaxed">
+                          Overall spending up <span className="font-semibold text-amber-300">{alert.payload.changePercent as number}%</span>.
+                          Avg monthly: <span className="font-semibold">{formatCurrency(alert.payload.avgMonthly as number)}</span>.
+                        </p>
+                      )}
+                      {alert.type === "category_trend" && (
+                        <p className="text-slate-400 leading-relaxed">
+                          <span className="font-semibold text-amber-300">{alert.payload.category as string}</span> spending increased{" "}
+                          <span className="font-semibold">{alert.payload.changePercent as number}%</span> compared to earlier in this period.
+                        </p>
+                      )}
+                      {alert.type === "unusual_purchase" && (
+                        <p className="text-slate-400 leading-relaxed">
+                          Unusual expense of <span className="font-semibold text-amber-300">{formatCurrency(alert.payload.amount as number)}</span> in{" "}
+                          <span className="font-semibold">{alert.payload.category as string}</span>.
+                        </p>
+                      )}
+                      {alert.type === "budget_warning" && (
+                        <p className="text-slate-400 leading-relaxed">
+                          <span className="font-semibold text-amber-300">{alert.payload.category as string}</span> is at{" "}
+                          <span className="font-semibold">{alert.payload.percentUsed as number}%</span> of budget ({formatCurrency(alert.payload.spent as number)} / {formatCurrency(alert.payload.budget as number)}).
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* SAVINGS GOAL — uses FIE savings data */}
                 <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-3">
                   <div className="flex items-center gap-1.5 mb-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                     <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Savings Goal</span>
                   </div>
-                  <div className="flex items-baseline justify-between mb-1.5">
-                    <span className="text-slate-300 font-medium">Emergency Fund</span>
-                    <span className="text-[10px] text-slate-500">
-                      {net > 0 ? formatCurrency(net) : "$0.00"} / $1,000
-                    </span>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-slate-400">Savings rate</span>
+                      <span className={`font-semibold ${fieReport.savings.savingsRate >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                        {fieReport.savings.savingsRate}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-slate-400">Avg monthly savings</span>
+                      <span className={`font-medium ${fieReport.savings.avgMonthlySavings >= 0 ? "text-slate-300" : "text-red-400"}`}>
+                        {formatCurrency(fieReport.savings.avgMonthlySavings)}
+                      </span>
+                    </div>
+                    {fieReport.savings.bestMonth && (
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-slate-400">Best month</span>
+                        <span className="text-slate-300">{fieReport.savings.bestMonth.month}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-slate-400">Trend</span>
+                      <span className={`font-medium ${fieReport.savings.trend === "up" ? "text-emerald-400" : fieReport.savings.trend === "down" ? "text-red-400" : "text-slate-400"}`}>
+                        {fieReport.savings.trend === "up" ? "Improving" : fieReport.savings.trend === "down" ? "Declining" : "Stable"}
+                        {fieReport.savings.trendPercent > 0 && ` ${fieReport.savings.trendPercent}%`}
+                      </span>
+                    </div>
                   </div>
-                  <div className="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
-                    <div
-                      className="h-full bg-emerald-500/80 rounded-full transition-all"
-                      style={{ width: `${Math.min(net > 0 ? (net / 1000) * 100 : 0, 100)}%` }}
-                    />
-                  </div>
-                  <p className="mt-2 text-slate-500 leading-relaxed">
-                    {net > 0
-                      ? `${Math.round(Math.min((net / 1000) * 100, 100))}% toward your first milestone. Keep it up.`
-                      : "Start by building a positive net balance to fund your goal."}
-                  </p>
                 </div>
 
-                {/* FORECAST */}
+                {/* 180-DAY FORECAST — uses FIE cash flow data */}
                 <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-3">
                   <div className="flex items-center gap-1.5 mb-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />
-                    <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">30-Day Forecast</span>
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Forecast</span>
                   </div>
-                  {income > 0 ? (
-                    <>
-                      <div className="flex items-baseline gap-2 mb-1">
-                        <span className={`text-lg font-semibold ${net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                          {formatCurrency(net)}
-                        </span>
-                        <span className="text-[10px] text-slate-500">projected net</span>
-                      </div>
-                      <p className="text-slate-500 leading-relaxed">
-                        Based on your current income and spending patterns over this period.
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-slate-500 leading-relaxed">
-                      Add income and expenses to see your projected trend.
-                    </p>
-                  )}
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-slate-400">Projected month-end</span>
+                      <span className={`font-semibold ${fieReport.cashFlow.projectedMonthlyNet >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                        {formatCurrency(fieReport.cashFlow.projectedMonthlyNet)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-slate-400">Avg monthly cash flow</span>
+                      <span className={`font-medium ${fieReport.cashFlow.avgMonthlyNet >= 0 ? "text-slate-300" : "text-red-400"}`}>
+                        {formatCurrency(fieReport.cashFlow.avgMonthlyNet)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-slate-400">Discretionary spending</span>
+                      <span className="font-medium text-slate-300">
+                        {formatCurrency(fieReport.cashFlow.discretionarySpending)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-slate-400">Cash flow trend</span>
+                      <span className={`font-medium ${fieReport.cashFlow.trend === "up" ? "text-emerald-400" : fieReport.cashFlow.trend === "down" ? "text-red-400" : "text-slate-400"}`}>
+                        {fieReport.cashFlow.trend === "up" ? "Improving" : fieReport.cashFlow.trend === "down" ? "Declining" : "Stable"}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </>
             )}
-
-            {/* ASK YOUR COACH */}
-            <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-3">
-              <div className="flex items-center gap-1.5 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-                <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Ask Your Coach</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  disabled
-                  className="flex-1 rounded-lg bg-slate-950 border border-slate-800 px-2.5 py-1.5 text-[11px] text-slate-500 placeholder-slate-600 cursor-not-allowed"
-                  placeholder="How can I save more this month?"
-                />
-              </div>
-              <p className="mt-1.5 text-[10px] text-slate-600">
-                AI chat available soon on Pro.
-              </p>
-            </div>
 
             {/* ── DIVIDER ── */}
             <div className="border-t border-slate-800/60 my-1" />
