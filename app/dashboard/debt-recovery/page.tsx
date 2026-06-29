@@ -8,6 +8,10 @@ import {
   computeDebtSummary,
   compareStrategies,
 } from "@/lib/debt-recovery";
+import {
+  calculateFreedomReport,
+  computeMilestones,
+} from "@/lib/financial-freedom";
 import type {
   Debt,
   DebtType,
@@ -16,6 +20,7 @@ import type {
   DebtSummary,
   StrategyComparison,
 } from "@/lib/debt-recovery";
+import type { FinancialFreedomReport, Milestone } from "@/lib/financial-freedom";
 
 const DEBT_TYPES: { value: DebtType; label: string }[] = [
   { value: "credit_card", label: "Credit Card" },
@@ -39,6 +44,11 @@ function formatCurrency(value: number) {
 
 function debtTypeLabel(t: DebtType): string {
   return DEBT_TYPES.find((d) => d.value === t)?.label ?? t;
+}
+
+function formatFreedomDate(iso: string): string {
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 }
 
 export default function DebtRecoveryPage() {
@@ -194,10 +204,26 @@ export default function DebtRecoveryPage() {
   }
 
   const summary: DebtSummary = computeDebtSummary(debts);
+  const openDebts = debts.filter((d) => d.status === "open");
   const comparison: StrategyComparison | null =
-    debts.filter((d) => d.status === "open").length > 0
-      ? compareStrategies(debts, extraPayment)
-      : null;
+    openDebts.length > 0 ? compareStrategies(debts, extraPayment) : null;
+
+  const freedom: FinancialFreedomReport | null =
+    openDebts.length > 0 ? calculateFreedomReport(debts, 0, extraPayment) : null;
+
+  const milestones: Milestone[] = debts.length > 0 ? computeMilestones(debts) : [];
+
+  const highestAprDebt = openDebts.length > 0
+    ? openDebts.reduce((best, d) => (d.apr > best.apr ? d : best), openDebts[0])
+    : null;
+
+  const smallestBalanceDebt = openDebts.length > 0
+    ? openDebts.reduce((best, d) => (d.balance < best.balance ? d : best), openDebts[0])
+    : null;
+
+  const recommendedDebt = comparison?.recommendedStrategy === "snowball"
+    ? smallestBalanceDebt
+    : highestAprDebt;
 
   if (authLoading) {
     return (
@@ -241,8 +267,51 @@ export default function DebtRecoveryPage() {
 
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
 
+        {/* ── HERO: FINANCIAL FREEDOM ── */}
+        {freedom && (
+          <div className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-5 mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
+                <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+              </div>
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Financial Freedom</span>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-6">
+              <div>
+                <div className="text-2xl font-bold text-emerald-400 mb-1">
+                  {formatFreedomDate(freedom.financialFreedomDate)}
+                </div>
+                <div className="flex items-center gap-4 text-[11px] text-slate-400">
+                  <span>{freedom.yearsRemaining} yr {freedom.monthsRemaining % 12} mo remaining</span>
+                  <span className="text-slate-600">|</span>
+                  <span>{freedom.daysRemaining} days</span>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] text-slate-400">Progress</span>
+                  <span className="text-[11px] font-semibold text-emerald-400">{freedom.progressPercent}%</span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all"
+                    style={{ width: `${freedom.progressPercent}%` }}
+                  />
+                </div>
+                {freedom.monthsSaved > 0 && (
+                  <div className="mt-2 text-[11px] text-emerald-400">
+                    {freedom.monthsSaved} months and {formatCurrency(freedom.interestSaved)} saved with {freedom.currentStrategy}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── SUMMARY CARDS ── */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
             <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Total Debt</div>
             <div className="text-lg font-semibold text-red-400">{formatCurrency(summary.totalDebt)}</div>
@@ -259,14 +328,47 @@ export default function DebtRecoveryPage() {
             <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Monthly Interest</div>
             <div className="text-lg font-semibold text-amber-400">{formatCurrency(summary.estimatedMonthlyInterest)}</div>
           </div>
-          <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/30 p-4">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Financial Freedom Date</div>
-            <div className="text-lg font-semibold text-slate-600">
-              {comparison ? comparison.avalanche.debtFreeDate : "—"}
-            </div>
-            <div className="text-[10px] text-slate-600 mt-0.5">Full projections coming soon</div>
-          </div>
         </div>
+
+        {/* ── TODAY'S BEST MOVE ── */}
+        {recommendedDebt && freedom && (
+          <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 mb-6">
+            <div className="flex items-center gap-1.5 mb-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+              <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Today&apos;s Best Move</span>
+            </div>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <div className="text-sm font-semibold mb-1">{recommendedDebt.name}</div>
+                <div className="space-y-1 text-[11px]">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Current payment</span>
+                    <span className="font-medium">{formatCurrency(recommendedDebt.minimum_payment)}/mo</span>
+                  </div>
+                  {freedom.recommendedExtraPayment > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Recommended payment</span>
+                      <span className="font-semibold text-emerald-400">{formatCurrency(recommendedDebt.minimum_payment + freedom.recommendedExtraPayment)}/mo</span>
+                    </div>
+                  )}
+                  {freedom.interestSaved > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Interest saved</span>
+                      <span className="font-medium text-emerald-400">{formatCurrency(freedom.interestSaved)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center">
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  {comparison?.recommendedStrategy === "avalanche"
+                    ? `${recommendedDebt.name} has the highest APR at ${recommendedDebt.apr}%. Paying this first minimizes total interest.`
+                    : `${recommendedDebt.name} has the smallest balance at ${formatCurrency(recommendedDebt.balance)}. Clearing it first builds momentum.`}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── YOUR DEBTS ── */}
         <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide mb-3">Your Debts</h2>
@@ -444,22 +546,93 @@ export default function DebtRecoveryPage() {
           </div>
         )}
 
-        {/* ── AI DEBT COACH (future) ── */}
-        <div className="mb-8">
-          <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide mb-3">AI Debt Coach</h2>
-          <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/30 p-6 text-center">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500/20 to-violet-500/20 border border-slate-700 flex items-center justify-center mx-auto mb-3">
-              <svg className="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2a4 4 0 0 0-4 4c0 2 1 3 2 4l-5 8h14l-5-8c1-1 2-2 2-4a4 4 0 0 0-4-4z" />
-                <path d="M12 18v4" />
-              </svg>
+        {/* ── FREEDOM TIMELINE ── */}
+        {milestones.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide mb-3">Freedom Timeline</h2>
+            <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+              <div className="flex flex-col gap-0">
+                {[
+                  { title: "Today", achieved: true, progressPercent: 100, type: "today" as const },
+                  ...milestones,
+                ].map((m, i, arr) => (
+                  <div key={m.title} className="flex items-start gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className={`w-3 h-3 rounded-full border-2 ${
+                        m.achieved
+                          ? "border-emerald-400 bg-emerald-400"
+                          : "border-slate-600 bg-slate-950"
+                      }`} />
+                      {i < arr.length - 1 && (
+                        <div className={`w-px h-8 ${
+                          m.achieved ? "bg-emerald-500/30" : "bg-slate-800"
+                        }`} />
+                      )}
+                    </div>
+                    <div className="pb-2">
+                      <div className={`text-[11px] font-medium ${
+                        m.achieved ? "text-emerald-400" : "text-slate-400"
+                      }`}>
+                        {m.title}
+                      </div>
+                      {!m.achieved && m.progressPercent > 0 && (
+                        <div className="text-[10px] text-slate-600">{m.progressPercent}% there</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <p className="text-sm text-slate-400">Personalized debt payoff coaching is coming soon.</p>
-            <p className="text-[11px] text-slate-600 mt-1">
-              The AI Coach will analyze your debts, income, and spending to recommend the fastest path to financial freedom.
-            </p>
           </div>
-        </div>
+        )}
+
+        {/* ── DEBT COACH ── */}
+        {freedom && recommendedDebt && (
+          <div className="mb-8">
+            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide mb-3">Debt Coach</h2>
+            <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-5 h-5 rounded-md bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center">
+                  <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2a4 4 0 0 0-4 4c0 2 1 3 2 4l-5 8h14l-5-8c1-1 2-2 2-4a4 4 0 0 0-4-4z" />
+                    <path d="M12 18v4" />
+                  </svg>
+                </div>
+                <span className="text-xs font-medium text-slate-400">Today&apos;s Recommendation</span>
+              </div>
+              <div className="space-y-2 text-[11px] text-slate-300 leading-relaxed">
+                <p>
+                  Continue the <span className="font-semibold text-emerald-400">{comparison?.recommendedStrategy === "avalanche" ? "Avalanche" : "Snowball"}</span> strategy.
+                </p>
+                {freedom.recommendedExtraPayment > 0 && (
+                  <p>
+                    Pay an additional <span className="font-semibold text-emerald-400">{formatCurrency(freedom.recommendedExtraPayment)}</span> toward{" "}
+                    <span className="font-semibold">{recommendedDebt.name}</span>.
+                  </p>
+                )}
+                {freedom.interestSaved > 0 && (
+                  <p className="text-slate-500">
+                    This approach saves {formatCurrency(freedom.interestSaved)} in interest and {freedom.monthsSaved} months compared to the alternative strategy.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {debts.length === 0 && !loading && (
+          <div className="mb-8">
+            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6 text-center">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-slate-700 flex items-center justify-center mx-auto mb-3">
+                <svg className="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+              </div>
+              <p className="text-sm text-slate-400">Add your first debt to calculate your path to Financial Freedom.</p>
+              <p className="text-[11px] text-slate-600 mt-1">
+                FlowTrack will project your freedom date, recommend a strategy, and track your progress.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ── ADD/EDIT FORM MODAL ── */}
         {showForm && (
