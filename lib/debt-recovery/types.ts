@@ -28,6 +28,7 @@ export type Debt = {
   custom_payment: number | null;
   status: DebtStatus;
   notes: string | null;
+  last_payment_date: string | null;
   reminder_enabled: boolean;
   reminder_method: ReminderMethod | null;
   reminder_offset: ReminderOffset | null;
