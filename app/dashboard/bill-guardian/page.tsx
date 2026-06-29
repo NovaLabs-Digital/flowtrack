@@ -23,9 +23,9 @@ function statusLabel(status: string): string {
   switch (status) {
     case "due_today": return "Due Today";
     case "due_tomorrow": return "Due Tomorrow";
-    case "upcoming": return "Upcoming";
-    case "overdue": return "Overdue";
-    case "paid": return "Paid";
+    case "upcoming": return "Coming Up";
+    case "overdue": return "Needs Attention";
+    case "paid": return "Completed";
     default: return status;
   }
 }
@@ -35,7 +35,7 @@ function statusColor(status: string): string {
     case "due_today": return "text-amber-400 bg-amber-500/10 border-amber-500/30";
     case "due_tomorrow": return "text-blue-400 bg-blue-500/10 border-blue-500/30";
     case "upcoming": return "text-slate-400 bg-slate-800 border-slate-700";
-    case "overdue": return "text-red-400 bg-red-500/10 border-red-500/30";
+    case "overdue": return "text-amber-400 bg-amber-500/10 border-amber-500/30";
     case "paid": return "text-emerald-400 bg-emerald-500/10 border-emerald-500/30";
     default: return "text-slate-400 bg-slate-800 border-slate-700";
   }
@@ -191,7 +191,7 @@ export default function BillGuardianPage() {
               disabled={markingPaid === bill.debtId}
               className="w-full rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:opacity-60"
             >
-              {markingPaid === bill.debtId ? "Saving..." : "Mark as Paid"}
+              {markingPaid === bill.debtId ? "Saving..." : "I've Paid This"}
             </button>
           </div>
         )}
@@ -241,13 +241,13 @@ export default function BillGuardianPage() {
 
         {/* ── OVERDUE ALERT ── */}
         {report.overdue.length > 0 && (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 mb-6">
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 mb-6">
             <div className="flex items-center gap-2 mb-1">
-              <div className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
-              <span className="text-sm font-semibold text-red-400">{report.overdue.length} Overdue {report.overdue.length === 1 ? "Payment" : "Payments"}</span>
+              <div className="w-2 h-2 rounded-full bg-amber-400" />
+              <span className="text-sm font-semibold text-amber-300">{report.overdue.length} {report.overdue.length === 1 ? "Payment Needs" : "Payments Need"} Attention</span>
             </div>
-            <p className="text-[11px] text-red-300/70">
-              These bills are past their due date this month. Late payments can affect your credit and increase interest costs.
+            <p className="text-[11px] text-amber-200/60">
+              Taking care of these today keeps your Financial Freedom plan moving forward.
             </p>
           </div>
         )}
@@ -259,12 +259,12 @@ export default function BillGuardianPage() {
             <div className="text-lg font-semibold">{report.totalDueThisMonth}</div>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Paid This Cycle</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Completed</div>
             <div className="text-lg font-semibold text-emerald-400">{report.paidThisCycle.length}</div>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Overdue</div>
-            <div className={`text-lg font-semibold ${report.totalOverdue > 0 ? "text-red-400" : "text-slate-400"}`}>{report.totalOverdue}</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Needs Attention</div>
+            <div className={`text-lg font-semibold ${report.totalOverdue > 0 ? "text-amber-400" : "text-slate-400"}`}>{report.totalOverdue}</div>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
             <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Next Due</div>
@@ -280,8 +280,8 @@ export default function BillGuardianPage() {
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500/20 to-violet-500/20 border border-slate-700 flex items-center justify-center mx-auto mb-3">
               <svg className="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
             </div>
-            <p className="text-sm text-slate-400">No bills to track yet.</p>
-            <p className="text-[11px] text-slate-600 mt-1">Add debts in the Debt Recovery Center and Bill Guardian will monitor your due dates.</p>
+            <p className="text-sm text-slate-400">You&apos;re all set up.</p>
+            <p className="text-[11px] text-slate-600 mt-1">Add debts in the Debt Recovery Center and Bill Guardian will help you stay on track.</p>
           </div>
         ) : (
           <>
@@ -308,7 +308,7 @@ export default function BillGuardianPage() {
             {/* ── OVERDUE ── */}
             {report.overdue.length > 0 && (
               <div className="mb-6">
-                <h2 className="text-sm font-semibold text-red-400 uppercase tracking-wide mb-3">Overdue</h2>
+                <h2 className="text-sm font-semibold text-amber-400 uppercase tracking-wide mb-3">Needs Attention</h2>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {report.overdue.map(renderBillCard)}
                 </div>
@@ -318,7 +318,7 @@ export default function BillGuardianPage() {
             {/* ── UPCOMING ── */}
             {report.upcoming.length > 0 && (
               <div className="mb-6">
-                <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide mb-3">Upcoming (Next 7 Days)</h2>
+                <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide mb-3">Coming Up</h2>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {report.upcoming.map(renderBillCard)}
                 </div>
@@ -328,7 +328,7 @@ export default function BillGuardianPage() {
             {/* ── PAID THIS CYCLE ── */}
             {report.paidThisCycle.length > 0 && (
               <div className="mb-6">
-                <h2 className="text-sm font-semibold text-emerald-400 uppercase tracking-wide mb-3">Paid This Month</h2>
+                <h2 className="text-sm font-semibold text-emerald-400 uppercase tracking-wide mb-3">Completed This Month</h2>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {report.paidThisCycle.map(renderBillCard)}
                 </div>
@@ -338,7 +338,7 @@ export default function BillGuardianPage() {
             {/* ── NO ACTIVITY ── */}
             {!hasAlerts && report.upcoming.length === 0 && report.dueTomorrow.length === 0 && report.paidThisCycle.length === 0 && (
               <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6 text-center mb-6">
-                <p className="text-sm text-slate-400">All clear. No bills due in the next 7 days.</p>
+                <p className="text-sm text-slate-400">You&apos;re all caught up. No bills due in the next 7 days.</p>
               </div>
             )}
           </>
