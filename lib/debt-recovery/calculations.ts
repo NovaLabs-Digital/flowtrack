@@ -148,7 +148,10 @@ export function calculateStrategy(
       name: d.name,
       balance: d.balance,
       apr: d.apr,
-      minPayment: d.minimum_payment,
+      minPayment:
+        d.payment_plan === "custom" && d.custom_payment && d.custom_payment > d.minimum_payment
+          ? d.custom_payment
+          : d.minimum_payment,
     }));
 
   const ordering = strategy === "snowball" ? "snowball" : "avalanche";

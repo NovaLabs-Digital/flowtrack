@@ -12,6 +12,7 @@ import type {
   Debt,
   DebtType,
   DebtStatus,
+  PaymentPlan,
   DebtSummary,
   StrategyComparison,
 } from "@/lib/debt-recovery";
@@ -58,7 +59,8 @@ export default function DebtRecoveryPage() {
   const [formApr, setFormApr] = useState("");
   const [formMinPayment, setFormMinPayment] = useState("");
   const [formDueDate, setFormDueDate] = useState("1");
-  const [formSuggested, setFormSuggested] = useState("");
+  const [formPaymentPlan, setFormPaymentPlan] = useState<PaymentPlan>("minimum");
+  const [formCustomPayment, setFormCustomPayment] = useState("");
   const [formStatus, setFormStatus] = useState<DebtStatus>("open");
   const [formNotes, setFormNotes] = useState("");
 
@@ -90,7 +92,8 @@ export default function DebtRecoveryPage() {
     setFormApr("");
     setFormMinPayment("");
     setFormDueDate("1");
-    setFormSuggested("");
+    setFormPaymentPlan("minimum");
+    setFormCustomPayment("");
     setFormStatus("open");
     setFormNotes("");
     setEditingId(null);
@@ -98,12 +101,13 @@ export default function DebtRecoveryPage() {
 
   function openEditForm(debt: Debt) {
     setFormName(debt.name);
-    setFormType(debt.debt_type);
+    setFormType(debt.type);
     setFormBalance(String(debt.balance));
     setFormApr(String(debt.apr));
     setFormMinPayment(String(debt.minimum_payment));
-    setFormDueDate(String(debt.due_date));
-    setFormSuggested(debt.suggested_payment ? String(debt.suggested_payment) : "");
+    setFormDueDate(String(debt.due_day));
+    setFormPaymentPlan(debt.payment_plan ?? "minimum");
+    setFormCustomPayment(debt.custom_payment ? String(debt.custom_payment) : "");
     setFormStatus(debt.status);
     setFormNotes(debt.notes ?? "");
     setEditingId(debt.id);
@@ -118,21 +122,23 @@ export default function DebtRecoveryPage() {
     const apr = Number(formApr);
     const minPayment = Number(formMinPayment);
     const dueDate = Number(formDueDate);
-    const suggested = formSuggested ? Number(formSuggested) : null;
+    const customPayment = formCustomPayment ? Number(formCustomPayment) : null;
 
     if (!formName.trim() || balance <= 0 || minPayment <= 0) return;
+    if (formPaymentPlan === "custom" && (!customPayment || customPayment <= 0)) return;
 
     setSaving(true);
 
     const row = {
       user_id: user.id,
       name: formName.trim(),
-      debt_type: formType,
+      type: formType,
       balance,
       apr,
       minimum_payment: minPayment,
-      due_date: Math.min(Math.max(dueDate, 1), 31),
-      suggested_payment: suggested,
+      due_day: Math.min(Math.max(dueDate, 1), 31),
+      payment_plan: formPaymentPlan,
+      custom_payment: formPaymentPlan === "custom" ? customPayment : null,
       status: formStatus,
       notes: formNotes.trim() || null,
     };
@@ -286,7 +292,7 @@ export default function DebtRecoveryPage() {
                   <div>
                     <h3 className="font-semibold text-sm">{debt.name}</h3>
                     <span className="text-[10px] uppercase tracking-wide text-slate-500">
-                      {debtTypeLabel(debt.debt_type)}
+                      {debtTypeLabel(debt.type)}
                     </span>
                   </div>
                   <span
@@ -313,9 +319,15 @@ export default function DebtRecoveryPage() {
                     <span className="text-slate-400">Minimum</span>
                     <span className="font-medium">{formatCurrency(debt.minimum_payment)}</span>
                   </div>
+                  {debt.payment_plan === "custom" && debt.custom_payment && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Paying</span>
+                      <span className="font-medium text-emerald-400">{formatCurrency(debt.custom_payment)}/mo</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-slate-400">Due</span>
-                    <span className="font-medium">{debt.due_date}{debt.due_date === 1 ? "st" : debt.due_date === 2 ? "nd" : debt.due_date === 3 ? "rd" : "th"}</span>
+                    <span className="font-medium">{debt.due_day}{debt.due_day === 1 ? "st" : debt.due_day === 2 ? "nd" : debt.due_day === 3 ? "rd" : "th"}</span>
                   </div>
                   {debt.notes && (
                     <p className="text-slate-500 pt-1 border-t border-slate-800">{debt.notes}</p>
@@ -531,7 +543,7 @@ export default function DebtRecoveryPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block mb-1 text-slate-400">Minimum Payment</label>
                     <input
@@ -557,18 +569,46 @@ export default function DebtRecoveryPage() {
                       placeholder="15"
                     />
                   </div>
-                  <div>
-                    <label className="block mb-1 text-slate-400">Suggested (opt)</label>
+                </div>
+
+                <div>
+                  <label className="block mb-1 text-slate-400">Payment Plan</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormPaymentPlan("minimum")}
+                      className={`flex-1 rounded-lg border px-3 py-2 text-sm ${
+                        formPaymentPlan === "minimum"
+                          ? "border-emerald-500 bg-emerald-500/10 text-emerald-400"
+                          : "border-slate-700 text-slate-400 hover:bg-slate-800"
+                      }`}
+                    >
+                      Minimum only
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormPaymentPlan("custom")}
+                      className={`flex-1 rounded-lg border px-3 py-2 text-sm ${
+                        formPaymentPlan === "custom"
+                          ? "border-emerald-500 bg-emerald-500/10 text-emerald-400"
+                          : "border-slate-700 text-slate-400 hover:bg-slate-800"
+                      }`}
+                    >
+                      Custom monthly
+                    </button>
+                  </div>
+                  {formPaymentPlan === "custom" && (
                     <input
                       type="number"
                       min="0"
                       step="0.01"
-                      value={formSuggested}
-                      onChange={(e) => setFormSuggested(e.target.value)}
-                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm"
-                      placeholder="200"
+                      value={formCustomPayment}
+                      onChange={(e) => setFormCustomPayment(e.target.value)}
+                      className="w-full mt-2 rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm"
+                      placeholder="Monthly payment amount"
+                      required
                     />
-                  </div>
+                  )}
                 </div>
 
                 <div>

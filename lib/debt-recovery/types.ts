@@ -10,6 +10,8 @@ export type DebtType =
 
 export type DebtStatus = "open" | "paid_off";
 
+export type PaymentPlan = "minimum" | "custom";
+
 export type ReminderMethod = "email" | "sms" | "both";
 export type ReminderOffset = 1 | 3 | 7;
 
@@ -17,12 +19,13 @@ export type Debt = {
   id: string;
   user_id: string;
   name: string;
-  debt_type: DebtType;
+  type: DebtType;
   balance: number;
   apr: number;
   minimum_payment: number;
-  due_date: number; // day of month (1-31)
-  suggested_payment: number | null;
+  due_day: number; // day of month (1-31)
+  payment_plan: PaymentPlan;
+  custom_payment: number | null;
   status: DebtStatus;
   notes: string | null;
   reminder_enabled: boolean;

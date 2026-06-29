@@ -5,12 +5,13 @@ CREATE TABLE IF NOT EXISTS public.debts (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  debt_type TEXT NOT NULL DEFAULT 'other',
+  type TEXT NOT NULL DEFAULT 'other',
   balance NUMERIC(12, 2) NOT NULL DEFAULT 0,
   apr NUMERIC(6, 3) NOT NULL DEFAULT 0,
   minimum_payment NUMERIC(10, 2) NOT NULL DEFAULT 0,
-  due_date INTEGER NOT NULL DEFAULT 1,
-  suggested_payment NUMERIC(10, 2),
+  due_day INTEGER NOT NULL DEFAULT 1,
+  payment_plan TEXT NOT NULL DEFAULT 'minimum',
+  custom_payment NUMERIC(10, 2),
   status TEXT NOT NULL DEFAULT 'open',
   notes TEXT,
   reminder_enabled BOOLEAN NOT NULL DEFAULT false,
@@ -40,3 +41,7 @@ CREATE POLICY "Users can update own debts"
 CREATE POLICY "Users can delete own debts"
   ON public.debts FOR DELETE
   USING (auth.uid() = user_id);
+
+-- Migration from v1 (if table already exists with old column names):
+-- ALTER TABLE public.debts RENAME COLUMN suggested_payment TO custom_payment;
+-- ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS payment_plan TEXT NOT NULL DEFAULT 'minimum';

@@ -2,6 +2,7 @@ export type {
   Debt,
   DebtType,
   DebtStatus,
+  PaymentPlan,
   DebtSummary,
   StrategyType,
   StrategyResult,
