@@ -144,13 +144,22 @@ export default function DebtRecoveryPage() {
         .eq("id", editingId)
         .eq("user_id", user.id);
 
-      if (error) console.error("Update debt error:", error);
+      if (error) {
+        console.error("Update debt error:", error);
+        alert(`Failed to update debt: ${error.message}`);
+        setSaving(false);
+        return;
+      }
     } else {
       const { error } = await supabase.from("debts").insert(row);
-      if (error) console.error("Insert debt error:", error);
+      if (error) {
+        console.error("Insert debt error:", error);
+        alert(`Failed to add debt: ${error.message}`);
+        setSaving(false);
+        return;
+      }
     }
 
-    // Reload
     const { data } = await supabase
       .from("debts")
       .select("*")
