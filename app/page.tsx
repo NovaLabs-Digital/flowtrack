@@ -1,10 +1,11 @@
 import Link from "next/link";
+import Footer from "@/app/components/Footer";
 
 const SIGNUP_URL = "/signup";
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
+    <main className="bg-slate-950 text-slate-100">
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-10">
         {/* Top bar */}
         <header className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -144,6 +145,7 @@ export default function HomePage() {
           </div>
         </section>
       </section>
+      <Footer />
     </main>
   );
 }
