@@ -177,6 +177,24 @@ export default function SettingsPage() {
                 <span className="text-slate-200">{userEmail}</span>
               </div>
             </div>
+            <div className="mt-4 border-t border-slate-800 pt-4">
+              <p className="text-xs text-slate-500 mb-2">Dashboard Tour</p>
+              <button
+                type="button"
+                onClick={async () => {
+                  const { data: { user } } = await supabase.auth.getUser();
+                  if (!user) return;
+                  await supabase
+                    .from("profiles")
+                    .update({ completed_dashboard_tour: false })
+                    .eq("id", user.id);
+                  router.push("/dashboard");
+                }}
+                className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-800 transition"
+              >
+                Restart Tour
+              </button>
+            </div>
           </section>
 
           <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-5">

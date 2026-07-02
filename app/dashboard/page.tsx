@@ -9,6 +9,7 @@ import { PRICING } from "@/lib/pricing";
 import { generateFinancialReport } from "@/lib/financial-intelligence";
 import type { FinancialReport } from "@/lib/financial-intelligence";
 import HelpModal from "@/app/components/HelpModal";
+import DashboardTour from "@/app/components/DashboardTour";
 
 
 type TransactionType = "income" | "expense";
@@ -222,6 +223,7 @@ export default function DashboardPage() {
   stripe_subscription_status?: string | null;
   pro_grace_until?: string | null;
   dashboard_window_days?: number | null;
+  completed_dashboard_tour?: boolean | null;
   } | null>(null);
 
   const isGraceActive =
@@ -285,7 +287,7 @@ export default function DashboardPage() {
 
         const { data, error } = await supabase
           .from("profiles")
-          .select("plan, category_order, pro_grace_until, stripe_subscription_status, dashboard_window_days")
+          .select("plan, category_order, pro_grace_until, stripe_subscription_status, dashboard_window_days, completed_dashboard_tour")
           .eq("id", userId)
           .maybeSingle();
 
@@ -344,6 +346,7 @@ export default function DashboardPage() {
           stripe_subscription_status: data.stripe_subscription_status ?? null,
           pro_grace_until: data.pro_grace_until ?? null,
           dashboard_window_days: data.dashboard_window_days ?? null,
+          completed_dashboard_tour: data.completed_dashboard_tour ?? null,
         });
 
         // Restore saved window days preference, clamped to plan limits
@@ -414,6 +417,7 @@ export default function DashboardPage() {
 
   // ---- USER & DATA STATE ----
   const [showHelp, setShowHelp] = useState(false);
+  const [showTour, setShowTour] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -596,6 +600,28 @@ async function saveWindowDays(days: number) {
     .eq("id", userId);
 }
 
+async function saveTourCompleted() {
+  if (!userId) return;
+  await supabase
+    .from("profiles")
+    .update({ completed_dashboard_tour: true })
+    .eq("id", userId);
+}
+
+function handleTourComplete() {
+  setShowTour(false);
+  saveTourCompleted();
+}
+
+function focusQuickAdd() {
+  const form = document.querySelector<HTMLElement>('[data-tour="quick-add"]');
+  const firstInput = form?.querySelector<HTMLElement>("select, input");
+  if (firstInput) {
+    firstInput.scrollIntoView({ behavior: "smooth", block: "center" });
+    firstInput.focus();
+  }
+}
+
 useEffect(() => {
   if (!user?.id) return;
 
@@ -637,6 +663,14 @@ useEffect(() => {
 
   checkOnboardingStatus();
 }, [user, router]);
+
+// Show the guided tour once for new users, after the profile has loaded
+useEffect(() => {
+  if (!profileLoading && profile !== null && !profile.completed_dashboard_tour) {
+    const t = setTimeout(() => setShowTour(true), 700);
+    return () => clearTimeout(t);
+  }
+}, [profileLoading, profile]);
 
 function getReportTransactions(all: Transaction[]): Transaction[] {
   // helpers
@@ -1680,7 +1714,7 @@ if (checkingOnboarding) {
           <div className="flex-1 px-3 py-3 flex flex-col gap-3 text-xs overflow-y-auto">
             {/* CATEGORIES LIST */}
             {/* CATEGORIES LIST (SPLIT) */}
-              <div className="flex flex-col gap-3 min-h-0">
+              <div data-tour="categories" className="flex flex-col gap-3 min-h-0">
                 {/* INCOME (top 1/3) */}
                 <div className="border border-slate-800 rounded-xl bg-slate-900/20 overflow-hidden">
                   <div className="text-slate-400 uppercase text-[10px] px-3 py-2 border-b border-slate-800 flex items-center gap-1.5">
@@ -2078,6 +2112,7 @@ if (checkingOnboarding) {
                 Bill Guardian
               </button>
               <button
+                data-tour="settings-btn"
                 type="button"
                 onClick={() => router.push("/dashboard/settings")}
                 className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-900 text-slate-300 text-[11px] flex items-center gap-2"
@@ -2167,7 +2202,7 @@ if (checkingOnboarding) {
                 )}
 
               {/* Time selector + custom range (Pro) */}
-                <div className="flex items-center gap-3">
+                <div data-tour="date-range" className="flex items-center gap-3">
                   {/* Quick presets */}
                   <div className="flex items-center gap-2">
                     <span className="text-slate-400">Time:</span>
@@ -2279,7 +2314,7 @@ if (checkingOnboarding) {
             )}
 
           {/* QUICK ADD BAR */}
-          <div className="border-b border-slate-900 bg-slate-950/90 px-4 py-3 text-[11px] no-print">
+          <div data-tour="quick-add" className="border-b border-slate-900 bg-slate-950/90 px-4 py-3 text-[11px] no-print">
             {showWelcomeBanner && (
               <div className="mb-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-emerald-100">
                 <div className="flex items-start justify-between gap-4">
@@ -2378,7 +2413,7 @@ if (checkingOnboarding) {
           {/* ========================= */}
           <div className="flex-1 grid grid-rows-[minmax(0,0.18fr),minmax(0,0.82fr)] gap-4 p-4">
             {/* SUMMARY: INCOME / EXPENSES / NET */}
-            <div className="grid md:grid-cols-3 gap-4">
+            <div data-tour="summary-cards" className="grid md:grid-cols-3 gap-4">
               <div className="bg-slate-900 rounded-xl p-3 border border-slate-800 flex flex-col justify-between overflow-hidden">
                 <div>
                   <h2 className="text-[10px] font-medium uppercase tracking-wide text-slate-500 mb-1">
@@ -2440,7 +2475,7 @@ if (checkingOnboarding) {
             {/* BOTTOM: CATEGORY ENTRIES + ALL TRANSACTIONS */}
             <div className="grid md:grid-cols-2 gap-4 min-h-0">
               {/* CATEGORY ENTRIES CARD */}
-              <div className="bg-slate-900 rounded-xl p-4 border border-slate-800 flex flex-col min-h-0 max-h-[calc(82vh-6rem)]">
+              <div data-tour="category-entries" className="bg-slate-900 rounded-xl p-4 border border-slate-800 flex flex-col min-h-0 max-h-[calc(82vh-6rem)]">
                 <h2 className="text-sm font-medium mb-2">
                   Category Entries{" "}
                   <span className="text-slate-500 text-xs">
@@ -2619,7 +2654,7 @@ if (checkingOnboarding) {
               </div>
 
               {/* ALL TRANSACTIONS CARD */}
-              <div className="bg-slate-900 rounded-xl p-4 border border-slate-800 flex flex-col min-h-0 max-h-[calc(82vh-6rem)]">
+              <div data-tour="transactions" className="bg-slate-900 rounded-xl p-4 border border-slate-800 flex flex-col min-h-0 max-h-[calc(82vh-6rem)]">
                 <h2 className="text-sm font-medium mb-3">
                   All transactions{" "}
                   <span className="text-slate-500 text-xs">
@@ -2675,7 +2710,7 @@ if (checkingOnboarding) {
         {/* RIGHT SIDEBAR             */}
         {/* ========================= */}
         <aside className="w-72 border-l border-slate-800 bg-slate-950/80 flex flex-col">
-          <div className="px-4 py-4 border-b border-slate-800">
+          <div data-tour="ai-coach" className="px-4 py-4 border-b border-slate-800">
             <div className="flex items-center gap-2">
               <div className="w-5 h-5 rounded-md bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center">
                 <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -2902,7 +2937,7 @@ if (checkingOnboarding) {
             <div className="border-t border-slate-800/60 my-1" />
 
             {/* ── BUDGETS ── */}
-            <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-3">
+            <div data-tour="budgets" className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-3">
               <h3 className="font-medium mb-2 text-xs">Monthly Budgets</h3>
 
               <div className="space-y-2 pr-1 max-h-56 overflow-y-auto budget-scroll">
@@ -3213,6 +3248,13 @@ if (checkingOnboarding) {
   userId={userId ?? undefined}
   currentPage="Dashboard"
 />
+
+{showTour && (
+  <DashboardTour
+    onComplete={handleTourComplete}
+    onFocusQuickAdd={focusQuickAdd}
+  />
+)}
 </>
 );
 }
