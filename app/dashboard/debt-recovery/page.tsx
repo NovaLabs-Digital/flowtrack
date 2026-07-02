@@ -4,6 +4,7 @@ import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseclient";
 import { useAuth } from "@/app/context/AuthContext";
+import HelpModal from "@/app/components/HelpModal";
 import {
   computeDebtSummary,
   compareStrategies,
@@ -54,6 +55,7 @@ function formatFreedomDate(iso: string): string {
 export default function DebtRecoveryPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const [showHelp, setShowHelp] = useState(false);
 
   const [debts, setDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -253,12 +255,21 @@ export default function DebtRecoveryPage() {
               <h1 className="text-base font-semibold sm:text-lg leading-tight">Debt Recovery Center</h1>
             </div>
           </div>
-          <button
-            onClick={() => { resetForm(); setShowForm(true); }}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
-          >
-            + Add Debt
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowHelp(true)}
+              className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-800"
+            >
+              Need Help?
+            </button>
+            <button
+              onClick={() => { resetForm(); setShowForm(true); }}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+            >
+              + Add Debt
+            </button>
+          </div>
         </div>
         <div className="mx-auto max-w-6xl px-4 sm:px-6 pb-4">
           <p className="text-[11px] text-slate-500">Track. Strategize. Become debt free.</p>
@@ -816,6 +827,14 @@ export default function DebtRecoveryPage() {
           </div>
         )}
       </div>
+
+      <HelpModal
+        isOpen={showHelp}
+        onClose={() => setShowHelp(false)}
+        userEmail={user?.email ?? undefined}
+        userId={user?.id ?? undefined}
+        currentPage="Debt Recovery"
+      />
     </main>
   );
 }

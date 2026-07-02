@@ -8,6 +8,7 @@ import { useAuth } from "@/app/context/AuthContext";
 import { PRICING } from "@/lib/pricing";
 import { generateFinancialReport } from "@/lib/financial-intelligence";
 import type { FinancialReport } from "@/lib/financial-intelligence";
+import HelpModal from "@/app/components/HelpModal";
 
 
 type TransactionType = "income" | "expense";
@@ -412,6 +413,7 @@ export default function DashboardPage() {
 
 
   // ---- USER & DATA STATE ----
+  const [showHelp, setShowHelp] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -2053,6 +2055,14 @@ if (checkingOnboarding) {
             <div className="mt-auto pt-3 border-t border-slate-800 no-print space-y-0.5">
               <button
                 type="button"
+                onClick={() => setShowHelp(true)}
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-900 text-slate-400 text-[11px] flex items-center gap-2"
+              >
+                <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+                Need Help?
+              </button>
+              <button
+                type="button"
                 onClick={() => router.push("/dashboard/debt-recovery")}
                 className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-900 text-slate-300 text-[11px] flex items-center gap-2"
               >
@@ -2685,9 +2695,24 @@ if (checkingOnboarding) {
             {/* ── AI COACH CARDS ── */}
 
             {!fieReport ? (
-              <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-4 text-center">
+              <div className="rounded-xl border border-slate-800/60 bg-slate-900/50 p-5 text-center space-y-3">
+                <div className="text-2xl">👋</div>
+                <p className="text-slate-200 text-xs font-medium leading-relaxed">
+                  Welcome to FlowTrack!
+                </p>
                 <p className="text-slate-500 text-xs leading-relaxed">
-                  Add a few transactions to unlock personalized financial insights.
+                  Add your first income or expense to unlock personalized financial insights.
+                </p>
+                <p className="text-slate-500 text-xs leading-relaxed">
+                  New here?{" "}
+                  <button
+                    type="button"
+                    onClick={() => setShowHelp(true)}
+                    className="text-emerald-400 hover:underline"
+                  >
+                    Contact Support
+                  </button>
+                  {" "}— we&apos;re happy to help.
                 </p>
               </div>
             ) : fieReport.insights.length === 0 ? (
@@ -3180,6 +3205,14 @@ if (checkingOnboarding) {
 {/* =========== END PRINT-ONLY REPORT =========== */}
 
 </main>
+
+<HelpModal
+  isOpen={showHelp}
+  onClose={() => setShowHelp(false)}
+  userEmail={userEmail ?? undefined}
+  userId={userId ?? undefined}
+  currentPage="Dashboard"
+/>
 </>
 );
 }

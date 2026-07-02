@@ -3,11 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseclient";
+import HelpModal from "@/app/components/HelpModal";
 
 export default function SettingsPage() {
   const router = useRouter();
   const [profile, setProfile] = useState<any>(null);
   const [userEmail, setUserEmail] = useState("");
+  const [userId, setUserId] = useState<string | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
 
   async function handleManageBilling() {
     try {
@@ -92,6 +95,7 @@ export default function SettingsPage() {
 
       if (!user) return;
       setUserEmail(user.email || "");
+      setUserId(user.id);
 
       const { data } = await supabase
         .from("profiles")
@@ -138,12 +142,21 @@ export default function SettingsPage() {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
-        <button
-          onClick={() => router.push("/dashboard")}
-          className="mb-6 w-full rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800 sm:w-auto"
-        >
-          ← Back to Dashboard
-        </button>
+        <div className="mb-6 flex items-center gap-3">
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800"
+          >
+            ← Back to Dashboard
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowHelp(true)}
+            className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-400 hover:bg-slate-800"
+          >
+            Need Help?
+          </button>
+        </div>
 
         <h1 className="text-xl font-semibold sm:text-2xl">
         Settings
@@ -241,6 +254,14 @@ export default function SettingsPage() {
 
         </div>
       </div>
+
+      <HelpModal
+        isOpen={showHelp}
+        onClose={() => setShowHelp(false)}
+        userEmail={userEmail || undefined}
+        userId={userId ?? undefined}
+        currentPage="Settings"
+      />
     </main>
   );
 }

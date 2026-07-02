@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseclient";
 import { useAuth } from "@/app/context/AuthContext";
+import HelpModal from "@/app/components/HelpModal";
 import { scanBills } from "@/lib/bill-guardian";
 import { calculateFreedomReport } from "@/lib/financial-freedom";
 import type { Debt } from "@/lib/debt-recovery";
@@ -44,6 +45,7 @@ function statusColor(status: string): string {
 export default function BillGuardianPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const [showHelp, setShowHelp] = useState(false);
 
   const [debts, setDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -225,6 +227,13 @@ export default function BillGuardianPage() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              type="button"
+              onClick={() => setShowHelp(true)}
+              className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-800"
+            >
+              Need Help?
+            </button>
+            <button
               onClick={() => router.push("/dashboard/debt-recovery")}
               className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-800"
             >
@@ -377,6 +386,14 @@ export default function BillGuardianPage() {
         )}
 
       </div>
+
+      <HelpModal
+        isOpen={showHelp}
+        onClose={() => setShowHelp(false)}
+        userEmail={user?.email ?? undefined}
+        userId={user?.id ?? undefined}
+        currentPage="Bill Guardian"
+      />
     </main>
   );
 }
