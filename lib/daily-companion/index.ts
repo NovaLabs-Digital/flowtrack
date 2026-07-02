@@ -25,4 +25,4 @@ export {
   renderMonthlyProgress,
 } from "./email-templates";
 
-export { sendEmail } from "./scheduler";
+export { sendEmail, getResend } from "./scheduler";

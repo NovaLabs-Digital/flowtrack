@@ -3,7 +3,7 @@ import type { BuiltEmail } from "./email-builder";
 
 let resendInstance: Resend | null = null;
 
-function getResend(): Resend {
+export function getResend(): Resend {
   if (!resendInstance) {
     const key = process.env.RESEND_API_KEY;
     if (!key) throw new Error("RESEND_API_KEY is required");

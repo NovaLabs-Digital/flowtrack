@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Resend } from "resend";
+import { getResend } from "@/lib/daily-companion";
 
 export const runtime = "nodejs";
 
@@ -42,18 +42,10 @@ export async function POST(req: NextRequest) {
       message: string;
     };
 
-    const key = process.env.RESEND_API_KEY;
-    if (!key) {
-      return NextResponse.json(
-        { error: "Email service not configured." },
-        { status: 500 }
-      );
-    }
-
-    const resend = new Resend(key);
+    const resend = getResend();
     const from =
       process.env.RESEND_FROM_ADDRESS ??
-      "FlowTrack Companion <companion@appflowtrack.com>";
+      "FlowTrack <noreply@appflowtrack.com>";
 
     const categoryLabel = CATEGORY_LABELS[category] ?? "General";
     const sentAt = new Date(timestamp).toLocaleString("en-US", {
@@ -92,12 +84,19 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("[support/route] Resend error:", error.message);
+      return NextResponse.json(
+        { error: "We couldn't send your message right now. Please email us directly at support@appflowtrack.com." },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error("[support/route] Unexpected error:", err);
+    return NextResponse.json(
+      { error: "We couldn't send your message right now. Please email us directly at support@appflowtrack.com." },
+      { status: 500 }
+    );
   }
 }
