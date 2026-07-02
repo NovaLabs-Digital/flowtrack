@@ -75,21 +75,35 @@ export async function POST(req: NextRequest) {
 </body>
 </html>`;
 
-    const { error } = await resend.emails.send({
+    const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+    const replyTo = userEmail && isValidEmail(userEmail) ? userEmail : undefined;
+
+    const payload = {
       from,
       to: "support@appflowtrack.com",
-      replyTo: userEmail,
+      ...(replyTo ? { replyTo } : {}),
       subject: `[FlowTrack Support] ${categoryLabel}: ${subject}`,
       html,
+    };
+
+    console.log("[support/route] Sending email:", {
+      from: payload.from,
+      to: payload.to,
+      replyTo: payload.replyTo ?? "(omitted)",
+      subject: payload.subject,
     });
 
+    const { data, error } = await resend.emails.send(payload);
+
     if (error) {
-      console.error("[support/route] Resend error:", error.message);
+      console.error("[support/route] Resend error:", JSON.stringify({ name: error.name, statusCode: error.statusCode, message: error.message }));
       return NextResponse.json(
         { error: "We couldn't send your message right now. Please email us directly at support@appflowtrack.com." },
         { status: 500 }
       );
     }
+
+    console.log("[support/route] Resend success:", data?.id ?? "(no id)");
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {

@@ -61,7 +61,7 @@ export default function HelpModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userName:  userName  || "FlowTrack User",
-          userEmail: userEmail || "unknown",
+          userEmail: userEmail || undefined,
           userId:    userId    || "unknown",
           page:      currentPage || "Dashboard",
           userAgent: navigator.userAgent,
