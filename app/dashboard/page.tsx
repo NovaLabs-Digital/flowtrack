@@ -220,6 +220,7 @@ export default function DashboardPage() {
   category_order: string[];
   stripe_subscription_status?: string | null;
   pro_grace_until?: string | null;
+  dashboard_window_days?: number | null;
   } | null>(null);
 
   const isGraceActive =
@@ -283,7 +284,7 @@ export default function DashboardPage() {
 
         const { data, error } = await supabase
           .from("profiles")
-          .select("plan, category_order, pro_grace_until, stripe_subscription_status")
+          .select("plan, category_order, pro_grace_until, stripe_subscription_status, dashboard_window_days")
           .eq("id", userId)
           .maybeSingle();
 
@@ -339,7 +340,26 @@ export default function DashboardPage() {
         setProfile({
           plan: (data.plan ?? "free").toString().toLowerCase(),
           category_order: data.category_order ?? [],
+          stripe_subscription_status: data.stripe_subscription_status ?? null,
+          pro_grace_until: data.pro_grace_until ?? null,
+          dashboard_window_days: data.dashboard_window_days ?? null,
         });
+
+        // Restore saved window days preference, clamped to plan limits
+        const savedDays = data.dashboard_window_days;
+        if (savedDays) {
+          const localGraceExpired =
+            data.pro_grace_until &&
+            new Date(data.pro_grace_until).getTime() < Date.now();
+          const localIsPro =
+            (data.plan ?? "free").toLowerCase() === "pro" && !localGraceExpired;
+          const allowedDays = localIsPro
+            ? [7, 14, 30, 60, 90, 180]
+            : [7, 14, 30];
+          if (allowedDays.includes(savedDays)) {
+            setWindowDays(savedDays);
+          }
+        }
 
         setProfileLoading(false);
       }
@@ -560,12 +580,19 @@ useEffect(() => {
 
 useEffect(() => {
   setWindowDays((prev) => {
-    // If user upgraded/downgraded, clamp to allowed values
-    const allowed = isPro ? [7, 14, 30, 60, 90] : [7, 14, 30];
-    if (allowed.includes(prev)) return prev; // keep user's choice
-    return isPro ? 90 : 30; // fallback if prev isn't allowed
+    const allowed = isPro ? [7, 14, 30, 60, 90, 180] : [7, 14, 30];
+    if (allowed.includes(prev)) return prev;
+    return isPro ? 90 : 30;
   });
 }, [isPro]);
+
+async function saveWindowDays(days: number) {
+  if (!userId) return;
+  await supabase
+    .from("profiles")
+    .update({ dashboard_window_days: days })
+    .eq("id", userId);
+}
 
 useEffect(() => {
   if (!user?.id) return;
@@ -2139,20 +2166,18 @@ if (checkingOnboarding) {
                       value={windowDays}
                       onChange={(e) => {
                         const newDays = Number(e.target.value);
-                        
-                        // 🔒 Free plan guard
+
                         if (!isPro && newDays > 30) {
-                        openUpgrade("Time ranges above 30 days are Pro.");
-                        return;
-                         }
+                          openUpgrade("Time ranges above 30 days are Pro.");
+                          return;
+                        }
 
-                        setReportRangeMode("lastNDays"); // keep this exactly as-is
+                        setReportRangeMode("lastNDays");
                         setWindowDays(newDays);
-
-                        // 🔓 RELEASE custom override
                         setRangeMode("preset");
                         setAppliedStart(null);
                         setAppliedEnd(null);
+                        saveWindowDays(newDays);
                       }}
                      >
                       {DAY_OPTIONS.map((days) => (
