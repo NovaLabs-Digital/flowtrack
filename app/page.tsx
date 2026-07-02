@@ -1,7 +1,27 @@
 import Link from "next/link";
 import Footer from "@/app/components/Footer";
+import { PRICING } from "@/lib/pricing";
 
 const SIGNUP_URL = "/signup";
+
+const FREE_FEATURES = [
+  "Up to 30 days of history",
+  "Basic budgeting",
+  "Basic reports",
+  "Manual transaction entry",
+  "Community support",
+];
+
+const PRO_FEATURES = [
+  "Unlimited transactions",
+  "Unlimited history",
+  "Advanced budgeting",
+  "AI Financial Coach",
+  "CSV Export",
+  "Print / PDF snapshots",
+  "Extended date ranges",
+  "All future Pro updates",
+];
 
 export default function HomePage() {
   return (
@@ -13,7 +33,7 @@ export default function HomePage() {
             <p className="text-sm font-semibold tracking-wide text-slate-300">
               Nova Labs Digital
             </p>
-            <p className="text-xs text-slate-500">FlowTrack Personal</p>
+            <p className="text-xs text-slate-500">FlowTrack</p>
           </div>
 
           <Link
@@ -29,7 +49,7 @@ export default function HomePage() {
           <div className="grid w-full gap-12 md:grid-cols-2 md:items-center">
             <div>
               <p className="mb-3 text-sm font-medium uppercase tracking-[0.2em] text-emerald-400">
-                FlowTrack Personal
+                FlowTrack
               </p>
 
               <h1 className="text-4xl font-semibold leading-tight text-white md:text-6xl">
@@ -88,7 +108,7 @@ export default function HomePage() {
                     Built for people who do not want accounting headaches
                   </h3>
                   <p className="mt-3 text-sm leading-6 text-slate-400">
-                    FlowTrack Personal is designed for real life: simple entry,
+                    FlowTrack is designed for real life: simple entry,
                     clear visibility, and practical control without feeling like
                     bookkeeping software.
                   </p>
@@ -109,38 +129,88 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Bottom section */}
-        <section className="border-t border-slate-800 py-10">
-          <div className="grid gap-8 md:grid-cols-3">
-            <div>
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
-                For
-              </h3>
-              <p className="mt-3 text-sm leading-6 text-slate-400">
-                Solo entrepreneurs, small business owners, contractors, and
-                freelancers who want clarity without complexity.
-              </p>
-            </div>
+        {/* Pricing */}
+        <section id="pricing" className="border-t border-slate-800 py-12">
+          <div className="text-center">
+            <h2 className="text-2xl font-semibold text-white">Choose your plan</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Choose the plan that's right for you.
+            </p>
+          </div>
 
-            <div>
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
-                Beta access
-              </h3>
-              <p className="mt-3 text-sm leading-6 text-slate-400">
-                Request access through the waitlist. Approved users will receive
-                onboarding instructions by email.
-              </p>
-            </div>
+          {/* sm:py-6 gives vertical breathing room for the scaled Pro card's badge + shadow */}
+          <div className="mt-10 flex justify-center">
+            <div className="grid w-full max-w-2xl grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-8 sm:py-6">
 
-            <div>
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
-                Contact
-              </h3>
-              <p className="mt-3 text-sm leading-6 text-slate-400">
-                Nova Labs Digital
-                <br />
-                support@appflowtrack.com
-              </p>
+              {/* FREE card */}
+              <div className="flex flex-col rounded-2xl border border-slate-700 bg-slate-900/40 p-7">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                  Free
+                </p>
+                <p className="mt-1 text-xs text-slate-500">Perfect for getting started.</p>
+
+                <div className="mt-6">
+                  <p className="text-5xl font-bold tracking-tight text-white">$0</p>
+                  <p className="mt-1 text-sm text-slate-500">Forever</p>
+                </div>
+
+                <ul className="mt-8 flex-1 space-y-2.5">
+                  {FREE_FEATURES.map((feature) => (
+                    <li key={feature} className="flex items-center gap-3 text-sm text-slate-500">
+                      <span className="shrink-0 text-slate-600" aria-hidden="true">✓</span>
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+
+                <a
+                  href={SIGNUP_URL}
+                  className="mt-8 block w-full rounded-xl border border-slate-600 py-3 text-center text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
+                >
+                  Start Free
+                </a>
+                <p className="mt-2.5 text-center text-[11px] text-slate-700">
+                  No credit card required.
+                </p>
+              </div>
+
+              {/* PRO card — scaled ~5% larger on desktop */}
+              <div className="relative flex flex-col rounded-2xl border border-emerald-500/50 bg-slate-900/60 p-7 shadow-[0_0_48px_-8px_rgba(52,211,153,0.12)] sm:scale-[1.05]">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-400">
+                  Pro
+                </p>
+                <p className="mt-1 text-xs text-slate-500">Everything you need.</p>
+
+                <div className="mt-6">
+                  <p className="text-5xl font-bold tracking-tight text-white">
+                    {PRICING.monthly.label}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">/month</p>
+                  <p className="mt-2 text-[11px] text-slate-600">
+                    Less than one coffee a month.
+                  </p>
+                </div>
+
+                <ul className="mt-8 flex-1 space-y-2.5">
+                  {PRO_FEATURES.map((feature) => (
+                    <li key={feature} className="flex items-center gap-3 text-sm text-slate-300">
+                      <span className="shrink-0 text-emerald-400" aria-hidden="true">✓</span>
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+
+                <a
+                  href={SIGNUP_URL}
+                  className="mt-8 block w-full rounded-xl bg-emerald-500 py-3.5 text-center text-sm font-semibold text-slate-950 transition hover:bg-emerald-400"
+                >
+                  Start Pro
+                </a>
+                <p className="mt-2.5 text-center text-[11px] text-slate-600">
+                  Cancel anytime.
+                </p>
+              </div>
+
             </div>
           </div>
         </section>
