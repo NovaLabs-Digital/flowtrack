@@ -32,6 +32,7 @@ export type Debt = {
   reminder_enabled: boolean;
   reminder_method: ReminderMethod | null;
   reminder_offset: ReminderOffset | null;
+  last_reminder_sent_at: string | null;
   created_at: string;
 };
 

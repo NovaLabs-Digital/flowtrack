@@ -21,6 +21,7 @@ export type BillReminder = {
   reminderEnabled: boolean;
   reminderMethod: string | null;
   reminderOffset: number | null;
+  dueInDays: number;
 };
 
 export type BillGuardianReport = {

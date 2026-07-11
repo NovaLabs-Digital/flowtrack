@@ -37,7 +37,8 @@ function estimateFreedomDaysGained(
 function buildReminder(
   debt: Debt,
   status: ReminderStatus,
-  freedom: FinancialFreedomReport | null
+  freedom: FinancialFreedomReport | null,
+  dueInDays: number
 ): BillReminder {
   const recommended =
     debt.payment_plan === "custom" && debt.custom_payment && debt.custom_payment > debt.minimum_payment
@@ -60,6 +61,7 @@ function buildReminder(
     reminderEnabled: debt.reminder_enabled,
     reminderMethod: debt.reminder_method,
     reminderOffset: debt.reminder_offset,
+    dueInDays,
   };
 }
 
@@ -78,22 +80,21 @@ export function scanBills(
   const paidThisCycle: BillReminder[] = [];
 
   for (const debt of openDebts) {
+    const diff = debt.due_day - today;
+
     if (isPaidThisCycle(debt)) {
-      paidThisCycle.push(buildReminder(debt, "paid", freedom));
+      paidThisCycle.push(buildReminder(debt, "paid", freedom, diff));
       continue;
     }
 
-    const due = debt.due_day;
-    const diff = due - today;
-
     if (diff < 0) {
-      overdue.push(buildReminder(debt, "overdue", freedom));
+      overdue.push(buildReminder(debt, "overdue", freedom, diff));
     } else if (diff === 0) {
-      dueToday.push(buildReminder(debt, "due_today", freedom));
+      dueToday.push(buildReminder(debt, "due_today", freedom, diff));
     } else if (diff === 1) {
-      dueTomorrow.push(buildReminder(debt, "due_tomorrow", freedom));
+      dueTomorrow.push(buildReminder(debt, "due_tomorrow", freedom, diff));
     } else if (diff <= 7) {
-      upcoming.push(buildReminder(debt, "upcoming", freedom));
+      upcoming.push(buildReminder(debt, "upcoming", freedom, diff));
     }
   }
 

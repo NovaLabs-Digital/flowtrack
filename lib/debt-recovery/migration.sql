@@ -45,3 +45,8 @@ CREATE POLICY "Users can delete own debts"
 -- Migration from v1 (if table already exists with old column names):
 -- ALTER TABLE public.debts RENAME COLUMN suggested_payment TO custom_payment;
 -- ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS payment_plan TEXT NOT NULL DEFAULT 'minimum';
+
+-- Migration: Bill Guardian reminder duplicate-prevention tracking
+-- Records the last time an automated reminder email was sent for a debt,
+-- so the cron job never sends the same reminder twice in one billing cycle.
+ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS last_reminder_sent_at TIMESTAMPTZ;

@@ -35,7 +35,7 @@ export function buildDailyReport(
 ): DailyReport | null {
   const actionableBills: BillDue[] = [];
 
-  for (const bill of [...bills.dueToday, ...bills.dueTomorrow, ...bills.overdue]) {
+  for (const bill of [...bills.dueToday, ...bills.dueTomorrow, ...bills.upcoming, ...bills.overdue]) {
     actionableBills.push({
       name: bill.debtName,
       dueLabel:
@@ -43,6 +43,8 @@ export function buildDailyReport(
           ? "Due Today"
           : bill.status === "due_tomorrow"
           ? "Due Tomorrow"
+          : bill.status === "upcoming"
+          ? "Coming Up"
           : "Needs Attention",
       minimumPayment: bill.minimumPayment,
       recommendedPayment: bill.recommendedPayment,
