@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseclient";
 import { useAuth } from "@/app/context/AuthContext";
 import HelpModal from "@/app/components/HelpModal";
-import { scanBills } from "@/lib/bill-guardian";
+import { scanBills, getTodayParts } from "@/lib/bill-guardian";
 import { calculateFreedomReport } from "@/lib/financial-freedom";
 import type { Debt } from "@/lib/debt-recovery";
 import type { BillGuardianReport, BillReminder } from "@/lib/bill-guardian";
@@ -130,7 +130,8 @@ export default function BillGuardianPage() {
   const freedom: FinancialFreedomReport | null =
     openDebts.length > 0 ? calculateFreedomReport(debts, 0, 0) : null;
 
-  const report: BillGuardianReport = scanBills(debts, freedom);
+  const today = getTodayParts(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const report: BillGuardianReport = scanBills(debts, freedom, today);
 
   const hasAlerts = report.overdue.length > 0 || report.dueToday.length > 0;
 

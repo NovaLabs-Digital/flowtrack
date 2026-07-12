@@ -4,6 +4,30 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseclient";
 import HelpModal from "@/app/components/HelpModal";
+import { resolveTimeZone, DEFAULT_TIME_ZONE } from "@/lib/profile/timezone";
+
+const COMMON_TIME_ZONES = [
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Phoenix",
+  "America/Anchorage",
+  "Pacific/Honolulu",
+  "America/Sao_Paulo",
+  "Europe/London",
+  "Europe/Paris",
+  "Asia/Tokyo",
+  "Australia/Sydney",
+];
+
+function detectBrowserTimeZone(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
+}
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -11,6 +35,8 @@ export default function SettingsPage() {
   const [userEmail, setUserEmail] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [timezone, setTimezone] = useState<string>(DEFAULT_TIME_ZONE);
+  const [savingTimezone, setSavingTimezone] = useState(false);
 
   async function handleManageBilling() {
     try {
@@ -122,6 +148,20 @@ export default function SettingsPage() {
           data.plan = "free";
           data.pro_grace_until = null;
         }
+
+        if (!data.timezone) {
+          const detected = detectBrowserTimeZone();
+          const resolved = resolveTimeZone(detected);
+          await supabase
+            .from("profiles")
+            .update({ timezone: resolved })
+            .eq("id", user.id);
+          data.timezone = resolved;
+        } else {
+          data.timezone = resolveTimeZone(data.timezone);
+        }
+
+        setTimezone(data.timezone);
       }
 
       setProfile(data);
@@ -129,6 +169,25 @@ export default function SettingsPage() {
 
     loadProfile();
   }, []);
+
+  async function handleTimezoneChange(newTimezone: string) {
+    if (!userId) return;
+    const resolved = resolveTimeZone(newTimezone);
+    setSavingTimezone(true);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ timezone: resolved })
+      .eq("id", userId);
+    setSavingTimezone(false);
+
+    if (error) {
+      alert(`Failed to save timezone: ${error.message}`);
+      return;
+    }
+
+    setTimezone(resolved);
+    setProfile((prev: Record<string, unknown> | null) => (prev ? { ...prev, timezone: resolved } : prev));
+  }
 
   const graceExpired =
     profile?.pro_grace_until &&
@@ -138,6 +197,10 @@ export default function SettingsPage() {
     profile?.stripe_subscription_status === "past_due" ||
     profile?.stripe_subscription_status === "unpaid" ||
     profile?.stripe_subscription_status === "canceled";
+
+  const timezoneOptions = COMMON_TIME_ZONES.includes(timezone)
+    ? COMMON_TIME_ZONES
+    : [timezone, ...COMMON_TIME_ZONES];
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -194,6 +257,27 @@ export default function SettingsPage() {
               >
                 Restart Tour
               </button>
+            </div>
+            <div className="mt-4 border-t border-slate-800 pt-4">
+              <p className="text-xs text-slate-500 mb-2">Timezone</p>
+              <p className="text-[11px] text-slate-600 mb-2">
+                Used to schedule Bill Guardian reminder emails at the right local time.
+              </p>
+              <select
+                value={timezone}
+                disabled={savingTimezone}
+                onChange={(e) => handleTimezoneChange(e.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60"
+              >
+                {timezoneOptions.map((tz) => (
+                  <option key={tz} value={tz}>
+                    {tz.replace(/_/g, " ")}
+                  </option>
+                ))}
+              </select>
+              {savingTimezone && (
+                <p className="mt-1.5 text-[11px] text-slate-500">Saving...</p>
+              )}
             </div>
           </section>
 

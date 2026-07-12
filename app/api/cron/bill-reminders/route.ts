@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { scanBills } from "@/lib/bill-guardian";
+import { scanBills, getTodayParts } from "@/lib/bill-guardian";
 import type { BillReminder, BillGuardianReport } from "@/lib/bill-guardian";
 import { calculateFreedomReport } from "@/lib/financial-freedom";
 import { buildDailyReport, buildGoodMorningEmail, sendEmail } from "@/lib/daily-companion";
 import type { Debt } from "@/lib/debt-recovery";
+import { resolveTimeZone } from "@/lib/profile/timezone";
 
 export const runtime = "nodejs";
 
@@ -142,22 +143,19 @@ async function runReminders(req: NextRequest) {
         continue;
       }
 
+      const { data: profileRow } = await supabaseAdmin
+        .from("profiles")
+        .select("timezone")
+        .eq("id", userId)
+        .maybeSingle();
+
+      const userTimeZone = resolveTimeZone(profileRow?.timezone ?? null);
+      const today = getTodayParts(userTimeZone);
+
       const allDebts = allDebtRows as Debt[];
       const openDebts = allDebts.filter((d) => d.status === "open");
       const freedom = openDebts.length > 0 ? calculateFreedomReport(allDebts, 0, 0) : null;
-
-      const nowForScan = new Date();
-      if (includeDetails) {
-        // TEMPORARY diagnostic logging for the dueInDays investigation — no secret/PII values.
-        console.log("[bill-reminders] scan clock", {
-          userId,
-          nowIso: nowForScan.toISOString(),
-          serverLocalDate: { y: nowForScan.getFullYear(), m: nowForScan.getMonth() + 1, d: nowForScan.getDate() },
-          serverUtcDate: { y: nowForScan.getUTCFullYear(), m: nowForScan.getUTCMonth() + 1, d: nowForScan.getUTCDate() },
-        });
-      }
-
-      const report = scanBills(allDebts, freedom);
+      const report = scanBills(allDebts, freedom, today);
 
       const reminderByDebtId = new Map<string, BillReminder>();
       for (const r of [...report.dueToday, ...report.dueTomorrow, ...report.upcoming, ...report.overdue]) {
@@ -168,22 +166,6 @@ async function runReminders(req: NextRequest) {
 
       for (const debt of userCandidates) {
         const reminder = reminderByDebtId.get(debt.id);
-
-        if (includeDetails) {
-          // TEMPORARY diagnostic logging for the dueInDays investigation — no secret/PII values.
-          console.log("[bill-reminders] dueInDays check", {
-            debtId: debt.id,
-            debtName: debt.name,
-            dueDay: debt.due_day,
-            reminderOffset: debt.reminder_offset,
-            foundInScan: Boolean(reminder),
-            dueInDays: reminder?.dueInDays ?? null,
-            status: reminder?.status ?? null,
-            comparison: reminder
-              ? `dueInDays(${reminder.dueInDays}) !== reminderOffset(${reminder.reminderOffset}) => ${reminder.dueInDays !== reminder.reminderOffset}`
-              : "no reminder found for this debt in dueToday/dueTomorrow/upcoming/overdue",
-          });
-        }
 
         if (!reminder) {
           // Not in any active bucket: either paid this cycle, or more than 7 days out.

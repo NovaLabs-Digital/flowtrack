@@ -1,21 +1,21 @@
 import type { Debt } from "../debt-recovery/types";
 import type { FinancialFreedomReport } from "../financial-freedom/types";
 import type { BillReminder, BillGuardianReport, ReminderStatus } from "./types";
+import { resolveDueOccurrence, type DateParts } from "./date";
 
-function formatDueDate(dueDay: number): string {
-  const now = new Date();
-  const thisMonth = new Date(now.getFullYear(), now.getMonth(), dueDay);
-  return thisMonth.toLocaleDateString("en-US", {
+function formatDueDate(parts: DateParts): string {
+  const d = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  return d.toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
+    timeZone: "UTC",
   });
 }
 
-function isPaidThisCycle(debt: Debt): boolean {
+function isPaidThisCycle(debt: Debt, today: DateParts): boolean {
   if (!debt.last_payment_date) return false;
-  const now = new Date();
-  const paid = new Date(debt.last_payment_date + "T00:00:00");
-  return paid.getMonth() === now.getMonth() && paid.getFullYear() === now.getFullYear();
+  const [year, month] = debt.last_payment_date.split("-").map(Number);
+  return month === today.month && year === today.year;
 }
 
 function estimateFreedomDaysGained(
@@ -38,6 +38,7 @@ function buildReminder(
   debt: Debt,
   status: ReminderStatus,
   freedom: FinancialFreedomReport | null,
+  occurrence: DateParts,
   dueInDays: number
 ): BillReminder {
   const recommended =
@@ -51,7 +52,7 @@ function buildReminder(
     debtType: debt.type,
     status,
     dueDay: debt.due_day,
-    dueDateFormatted: formatDueDate(debt.due_day),
+    dueDateFormatted: formatDueDate(occurrence),
     minimumPayment: debt.minimum_payment,
     recommendedPayment: recommended,
     balance: debt.balance,
@@ -67,10 +68,9 @@ function buildReminder(
 
 export function scanBills(
   debts: Debt[],
-  freedom: FinancialFreedomReport | null
+  freedom: FinancialFreedomReport | null,
+  today: DateParts
 ): BillGuardianReport {
-  const now = new Date();
-  const today = now.getDate();
   const openDebts = debts.filter((d) => d.status === "open");
 
   const dueToday: BillReminder[] = [];
@@ -80,21 +80,22 @@ export function scanBills(
   const paidThisCycle: BillReminder[] = [];
 
   for (const debt of openDebts) {
-    const diff = debt.due_day - today;
+    const occurrence = resolveDueOccurrence(debt.due_day, today);
+    const diff = occurrence.dueInDays;
 
-    if (isPaidThisCycle(debt)) {
-      paidThisCycle.push(buildReminder(debt, "paid", freedom, diff));
+    if (isPaidThisCycle(debt, today)) {
+      paidThisCycle.push(buildReminder(debt, "paid", freedom, occurrence, diff));
       continue;
     }
 
     if (diff < 0) {
-      overdue.push(buildReminder(debt, "overdue", freedom, diff));
+      overdue.push(buildReminder(debt, "overdue", freedom, occurrence, diff));
     } else if (diff === 0) {
-      dueToday.push(buildReminder(debt, "due_today", freedom, diff));
+      dueToday.push(buildReminder(debt, "due_today", freedom, occurrence, diff));
     } else if (diff === 1) {
-      dueTomorrow.push(buildReminder(debt, "due_tomorrow", freedom, diff));
+      dueTomorrow.push(buildReminder(debt, "due_tomorrow", freedom, occurrence, diff));
     } else if (diff <= 7) {
-      upcoming.push(buildReminder(debt, "upcoming", freedom, diff));
+      upcoming.push(buildReminder(debt, "upcoming", freedom, occurrence, diff));
     }
   }
 
@@ -112,7 +113,7 @@ export function scanBills(
     upcoming,
     overdue,
     paidThisCycle,
-    totalDueThisMonth: openDebts.filter((d) => !isPaidThisCycle(d)).length,
+    totalDueThisMonth: openDebts.filter((d) => !isPaidThisCycle(d, today)).length,
     totalOverdue: overdue.length,
     nextDueDate,
     generatedAt: new Date().toISOString(),
