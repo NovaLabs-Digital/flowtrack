@@ -28,9 +28,21 @@ type DebtDecision = {
 
 function isAuthorized(req: NextRequest): boolean {
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) return false;
   const auth = req.headers.get("authorization");
-  return auth === `Bearer ${cronSecret}`;
+
+  const matched = Boolean(cronSecret) && Boolean(auth) && auth!.trim() === `Bearer ${cronSecret!.trim()}`;
+
+  // TEMPORARY diagnostic logging — no secret values are logged, only booleans/lengths.
+  console.log("[bill-reminders] auth check", {
+    hasEnvSecret: Boolean(cronSecret),
+    envSecretLength: cronSecret?.length ?? 0,
+    hasAuthHeader: Boolean(auth),
+    authHeaderLength: auth?.length ?? 0,
+    startsWithBearer: auth?.startsWith("Bearer ") ?? false,
+    matched,
+  });
+
+  return matched;
 }
 
 function alreadySentThisWindow(lastSentIso: string | null): boolean {
