@@ -145,6 +145,18 @@ async function runReminders(req: NextRequest) {
       const allDebts = allDebtRows as Debt[];
       const openDebts = allDebts.filter((d) => d.status === "open");
       const freedom = openDebts.length > 0 ? calculateFreedomReport(allDebts, 0, 0) : null;
+
+      const nowForScan = new Date();
+      if (includeDetails) {
+        // TEMPORARY diagnostic logging for the dueInDays investigation — no secret/PII values.
+        console.log("[bill-reminders] scan clock", {
+          userId,
+          nowIso: nowForScan.toISOString(),
+          serverLocalDate: { y: nowForScan.getFullYear(), m: nowForScan.getMonth() + 1, d: nowForScan.getDate() },
+          serverUtcDate: { y: nowForScan.getUTCFullYear(), m: nowForScan.getUTCMonth() + 1, d: nowForScan.getUTCDate() },
+        });
+      }
+
       const report = scanBills(allDebts, freedom);
 
       const reminderByDebtId = new Map<string, BillReminder>();
@@ -156,6 +168,22 @@ async function runReminders(req: NextRequest) {
 
       for (const debt of userCandidates) {
         const reminder = reminderByDebtId.get(debt.id);
+
+        if (includeDetails) {
+          // TEMPORARY diagnostic logging for the dueInDays investigation — no secret/PII values.
+          console.log("[bill-reminders] dueInDays check", {
+            debtId: debt.id,
+            debtName: debt.name,
+            dueDay: debt.due_day,
+            reminderOffset: debt.reminder_offset,
+            foundInScan: Boolean(reminder),
+            dueInDays: reminder?.dueInDays ?? null,
+            status: reminder?.status ?? null,
+            comparison: reminder
+              ? `dueInDays(${reminder.dueInDays}) !== reminderOffset(${reminder.reminderOffset}) => ${reminder.dueInDays !== reminder.reminderOffset}`
+              : "no reminder found for this debt in dueToday/dueTomorrow/upcoming/overdue",
+          });
+        }
 
         if (!reminder) {
           // Not in any active bucket: either paid this cycle, or more than 7 days out.
