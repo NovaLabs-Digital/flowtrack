@@ -29,16 +29,29 @@ type DebtDecision = {
 function isAuthorized(req: NextRequest): boolean {
   const cronSecret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
+  // Fallback for manual testing: some HTTP clients (notably Windows PowerShell's
+  // Invoke-RestMethod/Invoke-WebRequest, and any request that gets redirected)
+  // can fail to deliver a custom "Authorization" header. "X-Cron-Secret" is not
+  // a reserved/redirect-stripped header name, so it's a reliable manual-test path.
+  // Production Vercel Cron invocations continue to use Authorization: Bearer.
+  const cronSecretHeader = req.headers.get("x-cron-secret");
 
-  const matched = Boolean(cronSecret) && Boolean(auth) && auth!.trim() === `Bearer ${cronSecret!.trim()}`;
+  const bearerMatched =
+    Boolean(cronSecret) && Boolean(auth) && auth!.trim() === `Bearer ${cronSecret!.trim()}`;
+  const fallbackMatched =
+    Boolean(cronSecret) && Boolean(cronSecretHeader) && cronSecretHeader!.trim() === cronSecret!.trim();
+  const matched = bearerMatched || fallbackMatched;
 
-  // TEMPORARY diagnostic logging — no secret values are logged, only booleans/lengths.
+  // TEMPORARY diagnostic logging — no secret values are logged, only booleans/lengths/header names.
   console.log("[bill-reminders] auth check", {
     hasEnvSecret: Boolean(cronSecret),
     envSecretLength: cronSecret?.length ?? 0,
     hasAuthHeader: Boolean(auth),
     authHeaderLength: auth?.length ?? 0,
     startsWithBearer: auth?.startsWith("Bearer ") ?? false,
+    hasCronSecretHeader: Boolean(cronSecretHeader),
+    cronSecretHeaderLength: cronSecretHeader?.length ?? 0,
+    incomingHeaderNames: Array.from(req.headers.keys()),
     matched,
   });
 
