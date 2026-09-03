@@ -1,6 +1,11 @@
 import Link from "next/link";
 import Footer from "@/app/components/Footer";
 import { PRICING } from "@/lib/pricing";
+import { PromoAnnouncementBar, PromoHeroBadge, PromoCallout } from "@/app/components/PromoOffer";
+
+// Revalidate periodically so the START25 banner disappears on its own after
+// its expiration instant, without requiring a new deployment.
+export const revalidate = 3600;
 
 const SIGNUP_URL = "/signup";
 
@@ -26,6 +31,7 @@ const PRO_FEATURES = [
 export default function HomePage() {
   return (
     <main className="bg-slate-950 text-slate-100">
+      <PromoAnnouncementBar />
       <section className="mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-10">
         {/* Top bar */}
         <header className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -86,6 +92,8 @@ export default function HomePage() {
               <p className="mt-4 text-sm text-slate-500">
                 Early beta access. Limited spots. Feedback shapes the product.
               </p>
+
+              <PromoHeroBadge />
             </div>
 
             {/* Right-side info card */}
@@ -189,6 +197,8 @@ export default function HomePage() {
                   <p className="mt-2 text-[11px] text-slate-600">
                     Less than one coffee a month.
                   </p>
+
+                  <PromoCallout className="mt-4" />
                 </div>
 
                 <ul className="mt-8 flex-1 space-y-2.5">

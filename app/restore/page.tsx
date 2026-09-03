@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseclient";
 import { useAuth } from "@/app/context/AuthContext";
 import { PRICING } from "@/lib/pricing";
+import { PromoCallout } from "@/app/components/PromoOffer";
 
 
 type TransactionType = "income" | "expense";
@@ -1418,6 +1419,8 @@ function applySavedOrder(list: Category[], savedOrder: string[] | null) {
             </div>
           </div>
         </div>
+
+        <PromoCallout />
 
         <div className="flex gap-2">
           <button

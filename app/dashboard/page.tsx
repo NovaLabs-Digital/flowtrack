@@ -10,6 +10,7 @@ import { generateFinancialReport } from "@/lib/financial-intelligence";
 import type { FinancialReport } from "@/lib/financial-intelligence";
 import HelpModal from "@/app/components/HelpModal";
 import DashboardTour from "@/app/components/DashboardTour";
+import { PromoCallout } from "@/app/components/PromoOffer";
 
 
 type TransactionType = "income" | "expense";
@@ -1562,6 +1563,8 @@ if (checkingOnboarding) {
             </div>
           </div>
         </div>
+
+        <PromoCallout />
 
         <div className="flex gap-2">
           <button
