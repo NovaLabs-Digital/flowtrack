@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   renderGoodMorning,
+  renderBillReminder,
   renderCongratulations,
   renderWeeklyProgress,
   renderMonthlyProgress,
@@ -22,6 +23,18 @@ const mockDaily: DailyReport = {
       recommendedPayment: 145.74,
       freedomDaysGained: 11,
       balance: 4280,
+      paymentSourceName: "Chase Checking",
+      paymentSourceLast4: "1234",
+    },
+    {
+      name: "Capital One Visa",
+      dueLabel: "Coming Up",
+      minimumPayment: 210,
+      recommendedPayment: 210,
+      freedomDaysGained: 0,
+      balance: 3100,
+      paymentSourceName: "Capital One Visa",
+      paymentSourceLast4: "5678",
     },
     {
       name: "Auto Loan",
@@ -30,6 +43,8 @@ const mockDaily: DailyReport = {
       recommendedPayment: 320,
       freedomDaysGained: 0,
       balance: 12400,
+      paymentSourceName: null,
+      paymentSourceLast4: null,
     },
   ],
   freedomDate: "September 29, 2031",
@@ -84,6 +99,46 @@ const mockMonthly: MonthlyReport = {
   generatedAt: new Date().toISOString(),
 };
 
+// Single-bill scenarios matching the reminder cron's real behavior: when
+// exactly one bill is eligible, buildGoodMorningEmail renders it through
+// renderBillReminder (a single card) instead of the multi-bill digest.
+function singleBillReport(bill: DailyReport["bills"][number]): DailyReport {
+  return { ...mockDaily, bills: [bill] };
+}
+
+const mockBillBankAccount = singleBillReport({
+  name: "Apple Card",
+  dueLabel: "Due Tomorrow",
+  minimumPayment: 95.74,
+  recommendedPayment: 145.74,
+  freedomDaysGained: 11,
+  balance: 4280,
+  paymentSourceName: "Chase Checking",
+  paymentSourceLast4: "1234",
+});
+
+const mockBillCreditCard = singleBillReport({
+  name: "Capital One Visa",
+  dueLabel: "Coming Up",
+  minimumPayment: 210,
+  recommendedPayment: 210,
+  freedomDaysGained: 0,
+  balance: 3100,
+  paymentSourceName: "Capital One Visa",
+  paymentSourceLast4: "5678",
+});
+
+const mockBillLegacy = singleBillReport({
+  name: "Auto Loan",
+  dueLabel: "Coming Up",
+  minimumPayment: 320,
+  recommendedPayment: 320,
+  freedomDaysGained: 0,
+  balance: 12400,
+  paymentSourceName: null,
+  paymentSourceLast4: null,
+});
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type") ?? "good_morning";
@@ -99,6 +154,15 @@ export async function GET(req: Request) {
       break;
     case "monthly":
       rendered = renderMonthlyProgress(mockMonthly);
+      break;
+    case "bill_bank_account":
+      rendered = renderBillReminder(mockBillBankAccount);
+      break;
+    case "bill_credit_card":
+      rendered = renderBillReminder(mockBillCreditCard);
+      break;
+    case "bill_legacy":
+      rendered = renderBillReminder(mockBillLegacy);
       break;
     default:
       rendered = renderGoodMorning(mockDaily);

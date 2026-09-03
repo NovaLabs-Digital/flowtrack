@@ -12,6 +12,8 @@ export type BillDue = {
   recommendedPayment: number;
   freedomDaysGained: number;
   balance: number;
+  paymentSourceName: string | null;
+  paymentSourceLast4: string | null;
 };
 
 export type DailyReport = {

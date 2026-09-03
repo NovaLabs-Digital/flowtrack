@@ -18,6 +18,8 @@ const testReport: DailyReport = {
       recommendedPayment: 145.74,
       freedomDaysGained: 11,
       balance: 4280,
+      paymentSourceName: "Chase Checking",
+      paymentSourceLast4: "1234",
     },
   ],
   freedomDate: "September 29, 2031",

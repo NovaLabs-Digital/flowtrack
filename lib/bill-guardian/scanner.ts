@@ -63,6 +63,8 @@ function buildReminder(
     reminderMethod: debt.reminder_method,
     reminderOffset: debt.reminder_offset,
     dueInDays,
+    paymentSourceName: debt.payment_source_name ?? null,
+    paymentSourceLast4: debt.payment_source_last4 ?? null,
   };
 }
 

@@ -8,6 +8,10 @@ import HelpModal from "@/app/components/HelpModal";
 import {
   computeDebtSummary,
   compareStrategies,
+  normalizePaymentSourceType,
+  normalizePaymentSourceName,
+  normalizePaymentSourceLast4,
+  validatePaymentSourcePair,
 } from "@/lib/debt-recovery";
 import {
   calculateFreedomReport,
@@ -18,6 +22,7 @@ import type {
   DebtType,
   DebtStatus,
   PaymentPlan,
+  PaymentSourceType,
   DebtSummary,
   StrategyComparison,
 } from "@/lib/debt-recovery";
@@ -75,6 +80,10 @@ export default function DebtRecoveryPage() {
   const [formCustomPayment, setFormCustomPayment] = useState("");
   const [formStatus, setFormStatus] = useState<DebtStatus>("open");
   const [formNotes, setFormNotes] = useState("");
+  const [formPaymentSourceType, setFormPaymentSourceType] = useState<PaymentSourceType | "">("");
+  const [formPaymentSourceName, setFormPaymentSourceName] = useState("");
+  const [formPaymentSourceLast4, setFormPaymentSourceLast4] = useState("");
+  const [paymentSourceError, setPaymentSourceError] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -108,6 +117,10 @@ export default function DebtRecoveryPage() {
     setFormCustomPayment("");
     setFormStatus("open");
     setFormNotes("");
+    setFormPaymentSourceType("");
+    setFormPaymentSourceName("");
+    setFormPaymentSourceLast4("");
+    setPaymentSourceError(null);
     setEditingId(null);
   }
 
@@ -122,6 +135,10 @@ export default function DebtRecoveryPage() {
     setFormCustomPayment(debt.custom_payment ? String(debt.custom_payment) : "");
     setFormStatus(debt.status);
     setFormNotes(debt.notes ?? "");
+    setFormPaymentSourceType(debt.payment_source_type ?? "");
+    setFormPaymentSourceName(debt.payment_source_name ?? "");
+    setFormPaymentSourceLast4(debt.payment_source_last4 ?? "");
+    setPaymentSourceError(null);
     setEditingId(debt.id);
     setShowForm(true);
   }
@@ -139,6 +156,26 @@ export default function DebtRecoveryPage() {
     if (!formName.trim() || balance <= 0 || minPayment <= 0) return;
     if (formPaymentPlan === "custom" && (!customPayment || customPayment <= 0)) return;
 
+    const nameResult = normalizePaymentSourceName(formPaymentSourceName);
+    if (nameResult.error) {
+      setPaymentSourceError(nameResult.error);
+      return;
+    }
+
+    const last4Result = normalizePaymentSourceLast4(formPaymentSourceLast4);
+    if (last4Result.error) {
+      setPaymentSourceError(last4Result.error);
+      return;
+    }
+
+    const pairError = validatePaymentSourcePair(nameResult.value, last4Result.value);
+    if (pairError) {
+      setPaymentSourceError(pairError);
+      return;
+    }
+
+    setPaymentSourceError(null);
+
     setSaving(true);
 
     const row = {
@@ -153,6 +190,9 @@ export default function DebtRecoveryPage() {
       custom_payment: formPaymentPlan === "custom" ? customPayment : null,
       status: formStatus,
       notes: formNotes.trim() || null,
+      payment_source_type: normalizePaymentSourceType(formPaymentSourceType),
+      payment_source_name: nameResult.value,
+      payment_source_last4: last4Result.value,
     };
 
     if (editingId) {
@@ -442,6 +482,15 @@ export default function DebtRecoveryPage() {
                     <span className="text-slate-400">Due</span>
                     <span className="font-medium">{debt.due_day}{debt.due_day === 1 ? "st" : debt.due_day === 2 ? "nd" : debt.due_day === 3 ? "rd" : "th"}</span>
                   </div>
+                  {debt.payment_source_name && (
+                    <div className="flex justify-between pt-1 border-t border-slate-800">
+                      <span className="text-slate-400">Payment source</span>
+                      <span className="font-medium">
+                        {debt.payment_source_name}
+                        {debt.payment_source_last4 ? ` •••• ${debt.payment_source_last4}` : ""}
+                      </span>
+                    </div>
+                  )}
                   {debt.notes && (
                     <p className="text-slate-500 pt-1 border-t border-slate-800">{debt.notes}</p>
                   )}
@@ -793,6 +842,57 @@ export default function DebtRecoveryPage() {
                       required
                     />
                   )}
+                </div>
+
+                <div className="rounded-lg border border-slate-800 p-3">
+                  <label className="block mb-2 text-slate-400">Payment source (optional)</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block mb-1 text-[11px] text-slate-500">Type</label>
+                      <select
+                        value={formPaymentSourceType}
+                        onChange={(e) => setFormPaymentSourceType(e.target.value as PaymentSourceType | "")}
+                        className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm"
+                      >
+                        <option value="">Not specified</option>
+                        <option value="bank_account">Bank account</option>
+                        <option value="credit_card">Credit card</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block mb-1 text-[11px] text-slate-500">Last four digits</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="\d{0,4}"
+                        maxLength={4}
+                        value={formPaymentSourceLast4}
+                        onChange={(e) => {
+                          setFormPaymentSourceLast4(e.target.value.replace(/\D/g, "").slice(0, 4));
+                          setPaymentSourceError(null);
+                        }}
+                        className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm"
+                        placeholder="1234"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <label className="block mb-1 text-[11px] text-slate-500">Account/card name</label>
+                    <input
+                      type="text"
+                      value={formPaymentSourceName}
+                      onChange={(e) => setFormPaymentSourceName(e.target.value)}
+                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm"
+                      placeholder="e.g. Chase Checking"
+                    />
+                  </div>
+                  {paymentSourceError && (
+                    <p className="mt-2 text-[11px] text-red-400">{paymentSourceError}</p>
+                  )}
+                  <p className="mt-2 text-[10px] text-slate-500 leading-relaxed">
+                    FlowTrack stores only the name and last four digits. Never enter a full account or card number.
+                  </p>
                 </div>
 
                 <div>

@@ -50,3 +50,8 @@ CREATE POLICY "Users can delete own debts"
 -- Records the last time an automated reminder email was sent for a debt,
 -- so the cron job never sends the same reminder twice in one billing cycle.
 ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS last_reminder_sent_at TIMESTAMPTZ;
+
+-- Payment source display metadata: see migration_payment_source.sql
+-- (kept as its own independently-runnable migration rather than appended
+-- here, following this project's convention of one file per feature change
+-- to the shared debts table — see lib/bill-guardian/migration.sql).

@@ -22,6 +22,8 @@ export type BillReminder = {
   reminderMethod: string | null;
   reminderOffset: number | null;
   dueInDays: number;
+  paymentSourceName: string | null;
+  paymentSourceLast4: string | null;
 };
 
 export type BillGuardianReport = {

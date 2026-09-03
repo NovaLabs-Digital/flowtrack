@@ -50,6 +50,8 @@ export function buildDailyReport(
       recommendedPayment: bill.recommendedPayment,
       freedomDaysGained: bill.freedomDaysGained,
       balance: bill.balance,
+      paymentSourceName: bill.paymentSourceName,
+      paymentSourceLast4: bill.paymentSourceLast4,
     });
   }
 

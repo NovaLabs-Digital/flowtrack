@@ -15,6 +15,10 @@ export type PaymentPlan = "minimum" | "custom";
 export type ReminderMethod = "email" | "sms" | "both";
 export type ReminderOffset = 1 | 3 | 7;
 
+// Display-only metadata identifying which account/card a bill is paid from.
+// Never a real account/routing/card number — see lib/debt-recovery/payment-source.ts.
+export type PaymentSourceType = "bank_account" | "credit_card" | "other";
+
 export type Debt = {
   id: string;
   user_id: string;
@@ -33,6 +37,9 @@ export type Debt = {
   reminder_method: ReminderMethod | null;
   reminder_offset: ReminderOffset | null;
   last_reminder_sent_at: string | null;
+  payment_source_type: PaymentSourceType | null;
+  payment_source_name: string | null;
+  payment_source_last4: string | null;
   created_at: string;
 };
 

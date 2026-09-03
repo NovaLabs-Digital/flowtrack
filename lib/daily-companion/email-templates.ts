@@ -16,10 +16,15 @@ function baseLayout(content: string): string {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>FlowTrack</title>
 </head>
-<body style="margin:0;padding:0;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;padding:32px 16px;">
-<tr><td align="center">
-<table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#1e293b;border-radius:16px;border:1px solid #334155;overflow:hidden;">
+<body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;">
+<tr><td align="center" style="padding:32px 16px;">
+<!--[if mso]>
+<table role="presentation" width="592" cellpadding="0" cellspacing="0" align="center"><tr><td>
+<![endif]-->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;max-width:592px;background:#0f172a;border-radius:20px;">
+<tr><td style="padding:16px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#1e293b;border-radius:16px;border:1px solid #334155;overflow:hidden;">
 
 <!-- Header -->
 <tr><td style="padding:24px 28px 16px;border-bottom:1px solid #334155;">
@@ -43,11 +48,52 @@ ${content}
 </table>
 </td></tr>
 </table>
+<!--[if mso]>
+</td></tr></table>
+<![endif]-->
+</td></tr>
+</table>
 </body>
 </html>`;
 }
 
-function billRow(name: string, dueLabel: string, minimum: number, recommended: number, freedomDays: number): string {
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Renders the "Payment source: Name •••• 1234" line for a bill card. Never
+// trusts that a stored last4 is actually 4 digits — re-validates here so a
+// malformed value can never leak more than four characters into an email.
+function paymentSourceLine(name: string | null, last4: string | null): string {
+  const safeName = name && name.trim() ? escapeHtml(name.trim()) : null;
+  const safeLast4 = last4 && /^\d{4}$/.test(last4) ? last4 : null;
+
+  if (!safeName && !safeLast4) return "";
+
+  const label = safeName && safeLast4
+    ? `${safeName} •••• ${safeLast4}`
+    : safeName
+    ? safeName
+    : `•••• ${safeLast4}`;
+
+  return `
+<div style="font-size:11px;color:#64748b;margin-top:8px;padding-top:8px;border-top:1px solid #334155;">Payment source: ${label}</div>`;
+}
+
+function billRow(
+  name: string,
+  dueLabel: string,
+  minimum: number,
+  recommended: number,
+  freedomDays: number,
+  paymentSourceName: string | null = null,
+  paymentSourceLast4: string | null = null
+): string {
   const hasExtra = recommended > minimum;
   return `
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;border-radius:12px;border:1px solid #334155;margin-bottom:12px;">
@@ -73,6 +119,7 @@ Making the recommended payment moves your Financial Freedom Date ${freedomDays} 
 </td>
 </tr>` : ""}
 </table>
+${paymentSourceLine(paymentSourceName, paymentSourceLast4)}
 </td></tr>
 </table>`;
 }
@@ -80,7 +127,7 @@ Making the recommended payment moves your Financial Freedom Date ${freedomDays} 
 export function renderGoodMorning(report: DailyReport): { subject: string; html: string } {
   const billsHtml = report.bills.length > 0
     ? `<div style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:12px;">Today's Priorities</div>
-${report.bills.map((b) => billRow(b.name, b.dueLabel, b.minimumPayment, b.recommendedPayment, b.freedomDaysGained)).join("")}`
+${report.bills.map((b) => billRow(b.name, b.dueLabel, b.minimumPayment, b.recommendedPayment, b.freedomDaysGained, b.paymentSourceName, b.paymentSourceLast4)).join("")}`
     : `<div style="font-size:13px;color:#94a3b8;margin-bottom:16px;">No bills need attention today. You're on track.</div>`;
 
   const content = `
@@ -111,7 +158,7 @@ export function renderBillReminder(report: DailyReport): { subject: string; html
 
   const content = `
 <div style="font-size:15px;color:#e2e8f0;margin-bottom:16px;">${report.greeting}</div>
-${billRow(bill.name, bill.dueLabel, bill.minimumPayment, bill.recommendedPayment, bill.freedomDaysGained)}
+${billRow(bill.name, bill.dueLabel, bill.minimumPayment, bill.recommendedPayment, bill.freedomDaysGained, bill.paymentSourceName, bill.paymentSourceLast4)}
 <div style="font-size:13px;color:#94a3b8;margin-top:16px;line-height:1.6;">${report.encouragement}</div>`;
 
   return {

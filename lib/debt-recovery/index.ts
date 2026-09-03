@@ -9,6 +9,7 @@ export type {
   StrategyComparison,
   ReminderMethod,
   ReminderOffset,
+  PaymentSourceType,
 } from "./types";
 
 export {
@@ -16,3 +17,11 @@ export {
   calculateStrategy,
   compareStrategies,
 } from "./calculations";
+
+export {
+  normalizePaymentSourceType,
+  normalizePaymentSourceName,
+  normalizePaymentSourceLast4,
+  validatePaymentSourcePair,
+} from "./payment-source";
+export type { NormalizedField } from "./payment-source";
