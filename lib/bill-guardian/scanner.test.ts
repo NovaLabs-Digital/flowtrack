@@ -77,4 +77,22 @@ describe("scanBills payment source pass-through", () => {
     expect(report.dueToday[0].dueInDays).toBe(0);
     expect(report.dueToday[1].dueInDays).toBe(0);
   });
+
+  it("leaves status and debtId (what drives the 'I've Paid This' action) unaffected by payment source data", () => {
+    const withSource = makeDebt({
+      id: "debt-with-source",
+      payment_source_name: "Regions",
+      payment_source_last4: "3397",
+    });
+    const withoutSource = makeDebt({ id: "debt-without-source" });
+
+    const report = scanBills([withSource, withoutSource], null, today);
+    const [a, b] = report.dueToday;
+
+    expect(a.debtId).toBe("debt-with-source");
+    expect(b.debtId).toBe("debt-without-source");
+    expect(a.status).toBe(b.status);
+    expect(a.status).toBe("due_today");
+    expect(a.lastPaymentDate).toBe(b.lastPaymentDate);
+  });
 });

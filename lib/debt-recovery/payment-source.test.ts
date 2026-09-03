@@ -4,6 +4,7 @@ import {
   normalizePaymentSourceName,
   normalizePaymentSourceLast4,
   validatePaymentSourcePair,
+  formatPaymentSourceDisplay,
 } from "./payment-source";
 
 describe("normalizePaymentSourceType", () => {
@@ -154,5 +155,40 @@ describe("validatePaymentSourcePair", () => {
 
   it("allows neither field (legacy bill, no payment source at all)", () => {
     expect(validatePaymentSourcePair(null, null)).toBeNull();
+  });
+});
+
+describe("formatPaymentSourceDisplay", () => {
+  it("renders name plus valid last4 as 'Name •••• 1234'", () => {
+    expect(formatPaymentSourceDisplay("Regions", "3397")).toBe("Regions •••• 3397");
+  });
+
+  it("renders the name alone when last4 is absent", () => {
+    expect(formatPaymentSourceDisplay("Chase Checking", null)).toBe("Chase Checking");
+  });
+
+  it("returns null when no name exists, regardless of last4 (nothing to render)", () => {
+    expect(formatPaymentSourceDisplay(null, "1234")).toBeNull();
+    expect(formatPaymentSourceDisplay(null, null)).toBeNull();
+    expect(formatPaymentSourceDisplay("", "1234")).toBeNull();
+    expect(formatPaymentSourceDisplay("   ", "1234")).toBeNull();
+  });
+
+  it("drops a corrupted/invalid last4 and falls back to the name alone", () => {
+    expect(formatPaymentSourceDisplay("Regions", "12")).toBe("Regions");
+    expect(formatPaymentSourceDisplay("Regions", "12345678")).toBe("Regions");
+    expect(formatPaymentSourceDisplay("Regions", "12ab")).toBe("Regions");
+  });
+
+  it("never returns a string containing the literal 'undefined' or 'null'", () => {
+    expect(formatPaymentSourceDisplay(undefined, undefined)).toBeNull();
+    expect(formatPaymentSourceDisplay(undefined, "1234")).toBeNull();
+    const withBadLast4 = formatPaymentSourceDisplay("Regions", undefined);
+    expect(withBadLast4).not.toContain("undefined");
+    expect(withBadLast4).not.toContain("null");
+  });
+
+  it("trims a padded name before displaying it", () => {
+    expect(formatPaymentSourceDisplay("  Regions  ", "3397")).toBe("Regions •••• 3397");
   });
 });

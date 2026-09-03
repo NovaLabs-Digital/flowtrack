@@ -23,5 +23,6 @@ export {
   normalizePaymentSourceName,
   normalizePaymentSourceLast4,
   validatePaymentSourcePair,
+  formatPaymentSourceDisplay,
 } from "./payment-source";
 export type { NormalizedField } from "./payment-source";

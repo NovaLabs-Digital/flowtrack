@@ -74,3 +74,19 @@ export function validatePaymentSourcePair(
   }
   return null;
 }
+
+// Formats a saved payment source for display (bill cards, reminder emails):
+// "Name •••• 1234", "Name" alone, or null when there's nothing to show.
+// Re-validates last4 independently of storage — a stored value that isn't
+// exactly four digits (a corrupted row, a legacy write) is silently dropped
+// rather than rendered, so a bad value can never leak more than intended.
+export function formatPaymentSourceDisplay(
+  name: string | null | undefined,
+  last4: string | null | undefined
+): string | null {
+  const trimmedName = name?.trim();
+  if (!trimmedName) return null;
+
+  const validLast4 = last4 && LAST4_PATTERN.test(last4) ? last4 : null;
+  return validLast4 ? `${trimmedName} •••• ${validLast4}` : trimmedName;
+}

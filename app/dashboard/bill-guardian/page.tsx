@@ -7,6 +7,7 @@ import { useAuth } from "@/app/context/AuthContext";
 import HelpModal from "@/app/components/HelpModal";
 import { scanBills, getTodayParts } from "@/lib/bill-guardian";
 import { calculateFreedomReport } from "@/lib/financial-freedom";
+import { formatPaymentSourceDisplay } from "@/lib/debt-recovery";
 import type { Debt } from "@/lib/debt-recovery";
 import type { BillGuardianReport, BillReminder } from "@/lib/bill-guardian";
 import type { FinancialFreedomReport } from "@/lib/financial-freedom";
@@ -145,6 +146,7 @@ export default function BillGuardianPage() {
 
   function renderBillCard(bill: BillReminder) {
     const isPaid = bill.status === "paid";
+    const paymentSourceDisplay = formatPaymentSourceDisplay(bill.paymentSourceName, bill.paymentSourceLast4);
     return (
       <div
         key={bill.debtId}
@@ -179,6 +181,12 @@ export default function BillGuardianPage() {
             <span className="text-slate-400">Balance</span>
             <span className="font-medium text-red-400">{formatCurrency(bill.balance)}</span>
           </div>
+          {paymentSourceDisplay && (
+            <div className="flex justify-between">
+              <span className="text-slate-400">Payment source</span>
+              <span className="text-slate-400">{paymentSourceDisplay}</span>
+            </div>
+          )}
           {bill.freedomDaysGained > 0 && !isPaid && (
             <div className="flex justify-between">
               <span className="text-slate-400">Freedom days gained</span>
