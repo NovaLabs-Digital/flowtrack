@@ -1,6 +1,6 @@
 export const PRICING = {
   monthly: {
-    label: "$5.49",
+    label: "$7.99",
     period: "per month",
   },
   yearly: {
