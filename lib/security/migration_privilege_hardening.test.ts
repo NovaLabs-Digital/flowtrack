@@ -220,26 +220,51 @@ describe("privilege hardening runbook: contains every required stage", () => {
     expect(step1).toContain("has_function_privilege('supabase_auth_admin'");
   });
 
-  it("Step 1 creates a disposable future-table-default probe, checks all four effective privileges for both roles, and never assumes success from the REVOKE text alone", () => {
+  it("Step 1's probe is created dynamically via EXECUTE, never as a standalone top-level CREATE TABLE statement", () => {
     const step1 = runbook.slice(runbook.indexOf("STEP 1"), runbook.indexOf("STEP 2"));
-    expect(step1).toContain("CREATE TABLE public.__flowtrack_privilege_probe");
-    // Must come after the future-table default correction it's testing.
-    expect(step1.indexOf("ALTER DEFAULT PRIVILEGES FOR ROLE postgres")).toBeLessThan(
-      step1.indexOf("CREATE TABLE public.__flowtrack_privilege_probe")
-    );
-    for (const role of ["anon", "authenticated"]) {
-      for (const priv of ["TRUNCATE", "REFERENCES", "TRIGGER", "MAINTAIN"]) {
-        expect(step1).toContain(
-          `has_table_privilege('${role}', 'public.__flowtrack_privilege_probe', '${priv}')`
-        );
-      }
-    }
-    expect(step1).toMatch(/do not assume the ALTER DEFAULT PRIVILEGES statement[\s\S]{0,40}changed effective future-table defaults merely because it executed/);
+    expect(step1).toContain("EXECUTE 'CREATE TABLE public.__flowtrack_privilege_probe (id bigint)';");
+    // No bare, non-dynamic top-level CREATE TABLE for the probe anywhere in Step 1.
+    expect(step1).not.toMatch(/^CREATE TABLE public\.__flowtrack_privilege_probe/m);
   });
 
-  it("the probe table exists only inside Step 1 and is removed by ROLLBACK before the next verification query", () => {
+  it("Step 1's probe creation happens after the future-table default correction it's testing", () => {
     const step1 = runbook.slice(runbook.indexOf("STEP 1"), runbook.indexOf("STEP 2"));
-    const createIndex = step1.indexOf("CREATE TABLE public.__flowtrack_privilege_probe");
+    expect(step1.indexOf("ALTER DEFAULT PRIVILEGES FOR ROLE postgres")).toBeLessThan(
+      step1.indexOf("EXECUTE 'CREATE TABLE public.__flowtrack_privilege_probe")
+    );
+  });
+
+  it("Step 1 resolves the probe's OID from pg_class/pg_namespace and fails explicitly unless exactly one is found", () => {
+    const probeBlock = runbook.slice(
+      runbook.indexOf("$assert_probe$"),
+      runbook.indexOf("$assert_function_privileges$")
+    );
+    expect(probeBlock).toContain("FROM pg_class c");
+    expect(probeBlock).toContain("JOIN pg_namespace n ON n.oid = c.relnamespace");
+    expect(probeBlock).toContain("WHERE n.nspname = 'public' AND c.relname = '__flowtrack_privilege_probe'");
+    expect(probeBlock).toMatch(/probe_count <> 1/);
+    expect(probeBlock).toMatch(/RAISE EXCEPTION 'Expected exactly one public\.__flowtrack_privilege_probe relation/);
+  });
+
+  it("Step 1 checks probe privileges via the OID overload of has_table_privilege(), never by name", () => {
+    const probeBlock = runbook.slice(
+      runbook.indexOf("$assert_probe$"),
+      runbook.indexOf("$assert_function_privileges$")
+    );
+    for (const priv of ["TRUNCATE", "REFERENCES", "TRIGGER", "MAINTAIN"]) {
+      expect(probeBlock).toContain(`has_table_privilege(rl, probe_oid, '${priv}')`);
+    }
+    expect(probeBlock).not.toMatch(/has_table_privilege\([^)]*'public\.__flowtrack_privilege_probe'/);
+  });
+
+  it("no statement anywhere in Step 1 references the probe by name in has_table_privilege() (OID-only, per-role loop)", () => {
+    const step1 = runbook.slice(runbook.indexOf("STEP 1"), runbook.indexOf("STEP 2"));
+    expect(step1).not.toMatch(/has_table_privilege\([^)]*'public\.__flowtrack_privilege_probe'/);
+  });
+
+  it("the probe table exists only inside Step 1 and is removed by ROLLBACK before the final status row", () => {
+    const step1 = runbook.slice(runbook.indexOf("STEP 1"), runbook.indexOf("STEP 2"));
+    const createIndex = step1.indexOf("EXECUTE 'CREATE TABLE public.__flowtrack_privilege_probe");
     const rollbackIndex = step1.indexOf("ROLLBACK;");
     const regclassIndex = step1.indexOf("to_regclass('public.__flowtrack_privilege_probe')");
     expect(createIndex).toBeGreaterThan(-1);
@@ -269,6 +294,141 @@ describe("privilege hardening runbook: contains every required stage", () => {
     const step1 = runbook.slice(runbook.indexOf("STEP 1"), runbook.indexOf("STEP 2"));
     expect(step1).toContain("prosecdef AS security_definer");
     expect(step1).toContain("search_path = ''");
+  });
+});
+
+describe("privilege hardening runbook: Step 1 self-verifying assertions (do not depend on visual inspection)", () => {
+  const step1 = runbook.slice(runbook.indexOf("STEP 1"), runbook.indexOf("STEP 2"));
+  const lastPrivilegeStatementIndex = step1.indexOf(
+    "GRANT EXECUTE ON FUNCTION public.handle_new_user() TO supabase_auth_admin;"
+  );
+  const rollbackIndex = step1.indexOf("ROLLBACK;");
+  const assertionsBlock = step1.slice(lastPrivilegeStatementIndex, rollbackIndex);
+
+  const ASSERTION_TAGS = [
+    "assert_existing_tables",
+    "assert_probe",
+    "assert_function_privileges",
+    "assert_function_properties",
+    "assert_trigger",
+  ];
+
+  it("declares one DO block per assertion category, each raising a specific exception on failure", () => {
+    for (const tag of ASSERTION_TAGS) {
+      expect(step1).toContain(`DO $${tag}$`);
+      const block = step1.slice(step1.indexOf(`DO $${tag}$`), step1.indexOf(`$${tag}$;`) + tag.length + 2);
+      expect(block).toMatch(/RAISE EXCEPTION/);
+    }
+  });
+
+  it("every assertion DO block appears after the last privilege-changing statement and before ROLLBACK", () => {
+    expect(lastPrivilegeStatementIndex).toBeGreaterThan(-1);
+    expect(rollbackIndex).toBeGreaterThan(lastPrivilegeStatementIndex);
+    for (const tag of ASSERTION_TAGS) {
+      const tagIndex = step1.indexOf(`DO $${tag}$`);
+      expect(tagIndex).toBeGreaterThan(lastPrivilegeStatementIndex);
+      expect(tagIndex).toBeLessThan(rollbackIndex);
+    }
+  });
+
+  it("assertion 1+2: asserts all four CRUD privileges true and all four unsafe privileges false, for all ten tables and both roles", () => {
+    const block = assertionsBlock.slice(
+      assertionsBlock.indexOf("$assert_existing_tables$"),
+      assertionsBlock.indexOf("$assert_probe$")
+    );
+    for (const table of [
+      "budgets", "budgets_backup", "categories", "categories_backup",
+      "debts", "plan", "profiles", "transactions", "transactions_backup", "users",
+    ]) {
+      expect(block).toContain(`'${table}'`);
+    }
+    expect(block).toContain("'anon', 'authenticated'");
+    for (const priv of ["SELECT", "INSERT", "UPDATE", "DELETE"]) {
+      expect(block).toMatch(new RegExp(`NOT has_table_privilege\\(rl, 'public\\.' \\|\\| tbl, '${priv}'\\)`));
+    }
+    for (const priv of ["TRUNCATE", "REFERENCES", "TRIGGER", "MAINTAIN"]) {
+      expect(block).toMatch(new RegExp(`has_table_privilege\\(rl, 'public\\.' \\|\\| tbl, '${priv}'\\)`));
+    }
+  });
+
+  it("assertion 3: creates the probe dynamically, resolves its OID, and asserts it has none of the four unsafe privileges for either role", () => {
+    const probeBlock = assertionsBlock.slice(
+      assertionsBlock.indexOf("$assert_probe$"),
+      assertionsBlock.indexOf("$assert_function_privileges$")
+    );
+    expect(probeBlock).toContain("EXECUTE 'CREATE TABLE public.__flowtrack_privilege_probe (id bigint)';");
+    expect(probeBlock).toMatch(/probe_count <> 1/);
+    for (const priv of ["TRUNCATE", "REFERENCES", "TRIGGER", "MAINTAIN"]) {
+      expect(probeBlock).toContain(`has_table_privilege(rl, probe_oid, '${priv}')`);
+    }
+    expect(probeBlock).not.toMatch(/has_table_privilege\([^)]*'public\.__flowtrack_privilege_probe'/);
+    expect(probeBlock).toMatch(/RAISE EXCEPTION 'Future-table default correction ineffective/);
+  });
+
+  it("assertion 4: checks PUBLIC via ACL grantee = 0 (never has_function_privilege('public', ...)), and anon/authenticated/supabase_auth_admin via has_function_privilege", () => {
+    const fnPrivBlock = assertionsBlock.slice(
+      assertionsBlock.indexOf("$assert_function_privileges$"),
+      assertionsBlock.indexOf("$assert_function_properties$")
+    );
+    expect(fnPrivBlock).toMatch(/grantee = 0/);
+    expect(executableStatements(fnPrivBlock)).not.toMatch(/has_function_privilege\('public'/);
+    expect(fnPrivBlock).toContain("has_function_privilege('anon'");
+    expect(fnPrivBlock).toContain("has_function_privilege('authenticated'");
+    expect(fnPrivBlock).toMatch(/NOT has_function_privilege\('supabase_auth_admin'/);
+  });
+
+  it("assertion 5: checks exactly one function, owner postgres, SECURITY DEFINER, and parses search_path robustly rather than string-matching a fixed format", () => {
+    const fnPropsBlock = assertionsBlock.slice(
+      assertionsBlock.indexOf("$assert_function_properties$"),
+      assertionsBlock.indexOf("$assert_trigger$")
+    );
+    expect(fnPropsBlock).toMatch(/fn_count <> 1/);
+    expect(fnPropsBlock).toMatch(/fn_owner <> 'postgres'/);
+    expect(fnPropsBlock).toMatch(/NOT fn_secdef/);
+    // Robust parsing: extracts the value after '=' and strips quotes, rather
+    // than matching a single hardcoded literal like "search_path=" or
+    // "search_path=\"\"".
+    expect(fnPropsBlock).toContain("cfg LIKE 'search_path=%'");
+    expect(fnPropsBlock).toContain('btrim(substring(cfg FROM position(\'=\' IN cfg) + 1), \'"\')');
+    expect(fnPropsBlock).toMatch(/search_path_value <> ''/);
+  });
+
+  it("assertion 6: checks the trigger via catalog fields/bit flags, not by string-matching pg_get_triggerdef()", () => {
+    const block = assertionsBlock.slice(assertionsBlock.indexOf("$assert_trigger$"));
+    expect(block).toContain("trg_count <> 1");
+    expect(block).toContain("trg.tgenabled <> 'O'");
+    expect(block).toContain("trg.tgrelid <> 'auth.users'::regclass");
+    expect(block).toContain("trg.tgfoid <> 'public.handle_new_user()'::regprocedure");
+    // Bit flags per Postgres's documented tgtype layout, not text parsing.
+    // Proves exactly: row-level, AFTER, INSERT, and not BEFORE/INSTEAD OF/
+    // DELETE/UPDATE/TRUNCATE.
+    expect(block).toContain("(trg.tgtype & 1) = 0");   // row-level required
+    expect(block).toContain("(trg.tgtype & 2) <> 0");  // not BEFORE
+    expect(block).toContain("(trg.tgtype & 64) <> 0"); // not INSTEAD OF
+    expect(block).toContain("(trg.tgtype & 4) = 0");   // INSERT required
+    expect(block).toContain("(trg.tgtype & 8) <> 0");  // not DELETE
+    expect(block).toContain("(trg.tgtype & 16) <> 0"); // not UPDATE
+    expect(block).toContain("(trg.tgtype & 32) <> 0"); // not TRUNCATE
+    expect(executableStatements(block)).not.toMatch(/pg_get_triggerdef/);
+  });
+
+  it("assertion 6 raises a distinct, specific exception message for each unexpected event bit", () => {
+    const block = assertionsBlock.slice(assertionsBlock.indexOf("$assert_trigger$"));
+    expect(block).toMatch(/RAISE EXCEPTION 'on_auth_user_created unexpectedly also fires on DELETE/);
+    expect(block).toMatch(/RAISE EXCEPTION 'on_auth_user_created unexpectedly also fires on UPDATE/);
+    expect(block).toMatch(/RAISE EXCEPTION 'on_auth_user_created unexpectedly also fires on TRUNCATE/);
+  });
+
+  it("keeps the ROLLBACK, and returns a final compact status row with dry_run_completed and probe_table_gone", () => {
+    expect(step1).toMatch(/ROLLBACK;/);
+    const afterRollback = step1.slice(step1.indexOf("ROLLBACK;"));
+    expect(afterRollback).toMatch(/true AS dry_run_completed/);
+    expect(afterRollback).toMatch(/to_regclass\('public\.__flowtrack_privilege_probe'\) IS NULL AS probe_table_gone/);
+  });
+
+  it("does not remove the existing human-readable SELECT queries, but they are no longer load-bearing", () => {
+    expect(step1).toContain("Verify EFFECTIVE table privileges WHILE STILL INSIDE the transaction");
+    expect(step1).toMatch(/not load-bearing/);
   });
 
   it("nowhere in the runbook is has_function_privilege('public', ...) actually executed (only discussed in comments)", () => {
@@ -366,5 +526,41 @@ describe("privilege hardening runbook: contains every required stage", () => {
     expect(appendix.indexOf("BEGIN;")).toBeLessThan(appendix.indexOf("ROLLBACK;"));
     expect(appendix).not.toMatch(/\bCOMMIT;/);
     expect(executableStatements(appendix)).not.toMatch(/has_function_privilege\('public'/);
+  });
+});
+
+describe("no SQL file in lib/security is executed automatically by build or deploy", () => {
+  it("package.json's build/dev/start scripts never reference a .sql file", () => {
+    const packageJson = readFileSync(join(__dirname, "..", "..", "package.json"), "utf-8");
+    const scripts = JSON.parse(packageJson).scripts as Record<string, string>;
+    for (const script of Object.values(scripts)) {
+      expect(script).not.toMatch(/\.sql/);
+    }
+  });
+
+  it("vercel.json declares only the pre-existing cron route, nothing that runs SQL", () => {
+    const vercelJson = readFileSync(join(__dirname, "..", "..", "vercel.json"), "utf-8");
+    expect(vercelJson).not.toMatch(/\.sql/);
+    expect(vercelJson).not.toMatch(/migration/i);
+  });
+
+  it("no application route file imports or requires either committed SQL file", () => {
+    // These files are inert repository content; the only intended reader is
+    // a human pasting them into the Supabase SQL Editor. Every API route in
+    // the app is a plausible place code could accidentally wire one in.
+    const routeFiles = [
+      "app/api/cron/bill-reminders/route.ts",
+      "app/api/stripe/checkout/route.ts",
+      "app/api/stripe/portal/route.ts",
+      "app/api/stripe/webhook/route.ts",
+      "app/api/support/route.ts",
+      "app/api/test-email/route.ts",
+      "app/api/email-preview/route.ts",
+    ];
+    for (const relPath of routeFiles) {
+      const source = readFileSync(join(__dirname, "..", "..", relPath), "utf-8");
+      expect(source).not.toMatch(/migration_privilege_hardening\.sql/);
+      expect(source).not.toMatch(/privilege_hardening_runbook\.sql/);
+    }
   });
 });

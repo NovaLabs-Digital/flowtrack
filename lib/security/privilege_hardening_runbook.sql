@@ -170,7 +170,24 @@ SELECT
 -- inside this transaction, to empirically prove the future-table default
 -- correction is actually effective for a newly created table, rather than
 -- assuming it worked because the REVOKE/ALTER DEFAULT PRIVILEGES statement
--- executed without error.
+-- executed without error. The probe is created dynamically and checked by
+-- OID entirely inside its own DO block (assertion 3) rather than as a
+-- standalone CREATE TABLE plus a later standalone name-based
+-- has_table_privilege() call — an earlier revision of this dry run used
+-- the standalone form and failed with `42P01: relation ... does not exist`
+-- on its first production run, even though the transaction's overall
+-- BEGIN/ROLLBACK boundary and full-state restoration were confirmed intact
+-- afterward. The exact cause could not be proven from that error alone; see
+-- the comment on assertion 3 below for why the OID-based, single-DO-block
+-- form sidesteps the problem regardless of the precise mechanism.
+--
+-- Correctness does NOT depend on Alberto visually inspecting the SELECT
+-- result sets below — the Supabase SQL Editor may only display the final
+-- result from a multi-statement batch. Every condition that matters is
+-- instead asserted with DO blocks that RAISE EXCEPTION on any failure,
+-- which aborts the whole transaction with a loud, specific error rather
+-- than silently completing. The human-readable SELECT queries are kept
+-- afterward for optional visual confirmation, but they are not load-bearing.
 -- =======================================================================
 
 BEGIN;
@@ -192,36 +209,274 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
   REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN
   ON TABLES FROM anon, authenticated;
 
--- Empirical probe: do not assume the ALTER DEFAULT PRIVILEGES statement
--- above changed effective future-table defaults merely because it executed
--- successfully. Create one uniquely named, disposable table AFTER that
--- statement — this exercises the default exactly the way a real future
--- table creation would — and check its EFFECTIVE privileges directly. This
--- table exists ONLY inside this Step 1 transaction, uses no user data,
--- modifies no existing table, is never added to
--- migration_privilege_hardening.sql, and is never created outside this dry
--- run — it is removed automatically by the ROLLBACK below.
-CREATE TABLE public.__flowtrack_privilege_probe (
-  id bigint
-);
-
-SELECT
-  has_table_privilege('anon', 'public.__flowtrack_privilege_probe', 'TRUNCATE')            AS anon_has_truncate,
-  has_table_privilege('anon', 'public.__flowtrack_privilege_probe', 'REFERENCES')          AS anon_has_references,
-  has_table_privilege('anon', 'public.__flowtrack_privilege_probe', 'TRIGGER')             AS anon_has_trigger,
-  has_table_privilege('anon', 'public.__flowtrack_privilege_probe', 'MAINTAIN')            AS anon_has_maintain,
-  has_table_privilege('authenticated', 'public.__flowtrack_privilege_probe', 'TRUNCATE')   AS authenticated_has_truncate,
-  has_table_privilege('authenticated', 'public.__flowtrack_privilege_probe', 'REFERENCES') AS authenticated_has_references,
-  has_table_privilege('authenticated', 'public.__flowtrack_privilege_probe', 'TRIGGER')    AS authenticated_has_trigger,
-  has_table_privilege('authenticated', 'public.__flowtrack_privilege_probe', 'MAINTAIN')   AS authenticated_has_maintain;
--- Expect ALL EIGHT columns FALSE for both roles. This is the actual proof
--- that the corrected default is effective for a newly created table, not
--- just that the REVOKE/ALTER DEFAULT PRIVILEGES text ran without error.
-
 ALTER FUNCTION public.handle_new_user() SET search_path = '';
 
 REVOKE EXECUTE ON FUNCTION public.handle_new_user() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.handle_new_user() TO supabase_auth_admin;
+
+-- =======================================================================
+-- Self-verifying assertions (run before ROLLBACK, after every temporary
+-- change above). Each DO block RAISE EXCEPTIONs with a specific message on
+-- any failure, aborting the transaction loudly — this cannot misleadingly
+-- report success. Nothing below depends on Alberto reading a result set.
+-- =======================================================================
+
+-- Assertion 1 + 2: existing-table CRUD is preserved (SELECT/INSERT/UPDATE/
+-- DELETE all still true, matching the verified Step 0d baseline) and the
+-- four unused privileges are actually gone (TRUNCATE/REFERENCES/TRIGGER/
+-- MAINTAIN all false), for all 10 exact tables and both anon/authenticated.
+DO $assert_existing_tables$
+DECLARE
+  tbl text;
+  rl text;
+BEGIN
+  FOR tbl IN SELECT unnest(ARRAY[
+    'budgets', 'budgets_backup', 'categories', 'categories_backup',
+    'debts', 'plan', 'profiles', 'transactions',
+    'transactions_backup', 'users'
+  ])
+  LOOP
+    FOR rl IN SELECT unnest(ARRAY['anon', 'authenticated'])
+    LOOP
+      IF NOT has_table_privilege(rl, 'public.' || tbl, 'SELECT') THEN
+        RAISE EXCEPTION 'CRUD regression: % lost SELECT on public.%', rl, tbl;
+      END IF;
+      IF NOT has_table_privilege(rl, 'public.' || tbl, 'INSERT') THEN
+        RAISE EXCEPTION 'CRUD regression: % lost INSERT on public.%', rl, tbl;
+      END IF;
+      IF NOT has_table_privilege(rl, 'public.' || tbl, 'UPDATE') THEN
+        RAISE EXCEPTION 'CRUD regression: % lost UPDATE on public.%', rl, tbl;
+      END IF;
+      IF NOT has_table_privilege(rl, 'public.' || tbl, 'DELETE') THEN
+        RAISE EXCEPTION 'CRUD regression: % lost DELETE on public.%', rl, tbl;
+      END IF;
+      IF has_table_privilege(rl, 'public.' || tbl, 'TRUNCATE') THEN
+        RAISE EXCEPTION 'Privilege removal failed: % still has TRUNCATE on public.%', rl, tbl;
+      END IF;
+      IF has_table_privilege(rl, 'public.' || tbl, 'REFERENCES') THEN
+        RAISE EXCEPTION 'Privilege removal failed: % still has REFERENCES on public.%', rl, tbl;
+      END IF;
+      IF has_table_privilege(rl, 'public.' || tbl, 'TRIGGER') THEN
+        RAISE EXCEPTION 'Privilege removal failed: % still has TRIGGER on public.%', rl, tbl;
+      END IF;
+      IF has_table_privilege(rl, 'public.' || tbl, 'MAINTAIN') THEN
+        RAISE EXCEPTION 'Privilege removal failed: % still has MAINTAIN on public.%', rl, tbl;
+      END IF;
+    END LOOP;
+  END LOOP;
+  RAISE NOTICE 'Assertion passed: CRUD preserved and TRUNCATE/REFERENCES/TRIGGER/MAINTAIN removed for all 10 tables x 2 roles.';
+END
+$assert_existing_tables$;
+
+-- Assertion 3: the future-table default correction is EFFECTIVE, proven on
+-- a disposable probe table (not merely that the REVOKE/ALTER DEFAULT
+-- PRIVILEGES statement executed without error). The probe is created
+-- dynamically (EXECUTE) and checked entirely INSIDE this one DO block: its
+-- OID is resolved directly from pg_class/pg_namespace immediately after
+-- creation, and privileges are checked via the OID overload of
+-- has_table_privilege(role, table_oid, privilege) rather than by
+-- re-resolving the name in a separate standalone statement. This avoids
+-- depending on a same-batch, name-based reference to a table created
+-- earlier in the same script resolving the way a particular SQL runner
+-- happens to execute a multi-statement paste — everything here is one
+-- atomic PL/pgSQL unit instead. CREATE TABLE itself requires EXECUTE here
+-- because plain DDL is not valid PL/pgSQL syntax; only dynamic SQL can run
+-- it inside a DO block.
+DO $assert_probe$
+DECLARE
+  rl text;
+  probe_oid oid;
+  probe_count int;
+BEGIN
+  EXECUTE 'CREATE TABLE public.__flowtrack_privilege_probe (id bigint)';
+
+  SELECT count(*), max(c.oid) INTO probe_count, probe_oid
+  FROM pg_class c
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public' AND c.relname = '__flowtrack_privilege_probe';
+
+  IF probe_count <> 1 THEN
+    RAISE EXCEPTION 'Expected exactly one public.__flowtrack_privilege_probe relation immediately after creation, found %', probe_count;
+  END IF;
+
+  FOR rl IN SELECT unnest(ARRAY['anon', 'authenticated'])
+  LOOP
+    IF has_table_privilege(rl, probe_oid, 'TRUNCATE') THEN
+      RAISE EXCEPTION 'Future-table default correction ineffective: % has TRUNCATE on a table created after the ALTER DEFAULT PRIVILEGES statement', rl;
+    END IF;
+    IF has_table_privilege(rl, probe_oid, 'REFERENCES') THEN
+      RAISE EXCEPTION 'Future-table default correction ineffective: % has REFERENCES on a table created after the ALTER DEFAULT PRIVILEGES statement', rl;
+    END IF;
+    IF has_table_privilege(rl, probe_oid, 'TRIGGER') THEN
+      RAISE EXCEPTION 'Future-table default correction ineffective: % has TRIGGER on a table created after the ALTER DEFAULT PRIVILEGES statement', rl;
+    END IF;
+    IF has_table_privilege(rl, probe_oid, 'MAINTAIN') THEN
+      RAISE EXCEPTION 'Future-table default correction ineffective: % has MAINTAIN on a table created after the ALTER DEFAULT PRIVILEGES statement', rl;
+    END IF;
+  END LOOP;
+  RAISE NOTICE 'Assertion passed: future-table default correction is effective on the probe table (oid %).', probe_oid;
+END
+$assert_probe$;
+
+-- Assertion 4: function EXECUTE privileges are exactly as intended. PUBLIC
+-- is checked via direct ACL inspection (grantee = 0), never via
+-- has_function_privilege('public', ...) — see the note earlier in this
+-- file for why that would be the wrong check.
+DO $assert_function_privileges$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_proc p, LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
+    WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'handle_new_user'
+      AND a.grantee = 0
+      AND a.privilege_type = 'EXECUTE'
+  ) THEN
+    RAISE EXCEPTION 'PUBLIC still has an EXECUTE ACL entry on public.handle_new_user()';
+  END IF;
+
+  IF has_function_privilege('anon', 'public.handle_new_user()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'anon can still execute public.handle_new_user()';
+  END IF;
+
+  IF has_function_privilege('authenticated', 'public.handle_new_user()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'authenticated can still execute public.handle_new_user()';
+  END IF;
+
+  IF NOT has_function_privilege('supabase_auth_admin', 'public.handle_new_user()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'supabase_auth_admin cannot execute public.handle_new_user() -- signup would break';
+  END IF;
+
+  RAISE NOTICE 'Assertion passed: function EXECUTE privileges are exactly as expected.';
+END
+$assert_function_privileges$;
+
+-- Assertion 5: function identity/properties are intact. proconfig's
+-- search_path entry is parsed rather than string-matched as a whole, and
+-- its value is unquoted before checking emptiness, so this doesn't break
+-- if Postgres represents an empty value as either `search_path=` or
+-- `search_path=""`.
+DO $assert_function_properties$
+DECLARE
+  fn_count int;
+  fn_owner text;
+  fn_secdef boolean;
+  fn_config text[];
+  cfg text;
+  search_path_value text;
+  search_path_found boolean := false;
+BEGIN
+  SELECT count(*) INTO fn_count
+  FROM pg_proc
+  WHERE pronamespace = 'public'::regnamespace AND proname = 'handle_new_user';
+
+  IF fn_count <> 1 THEN
+    RAISE EXCEPTION 'Expected exactly one public.handle_new_user() function, found %', fn_count;
+  END IF;
+
+  SELECT r.rolname, p.prosecdef, p.proconfig
+    INTO fn_owner, fn_secdef, fn_config
+  FROM pg_proc p
+  JOIN pg_roles r ON r.oid = p.proowner
+  WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'handle_new_user';
+
+  IF fn_owner <> 'postgres' THEN
+    RAISE EXCEPTION 'public.handle_new_user() owner changed unexpectedly to %', fn_owner;
+  END IF;
+
+  IF NOT fn_secdef THEN
+    RAISE EXCEPTION 'public.handle_new_user() is no longer SECURITY DEFINER';
+  END IF;
+
+  IF fn_config IS NULL THEN
+    RAISE EXCEPTION 'public.handle_new_user() has no proconfig entries -- search_path was not set';
+  END IF;
+
+  FOREACH cfg IN ARRAY fn_config LOOP
+    IF cfg LIKE 'search_path=%' THEN
+      search_path_found := true;
+      search_path_value := btrim(substring(cfg FROM position('=' IN cfg) + 1), '"');
+      IF search_path_value <> '' THEN
+        RAISE EXCEPTION 'public.handle_new_user() search_path is not empty: %', search_path_value;
+      END IF;
+    END IF;
+  END LOOP;
+
+  IF NOT search_path_found THEN
+    RAISE EXCEPTION 'public.handle_new_user() proconfig does not contain a search_path setting';
+  END IF;
+
+  RAISE NOTICE 'Assertion passed: exactly one handle_new_user(), owner postgres, SECURITY DEFINER, empty search_path.';
+END
+$assert_function_properties$;
+
+-- Assertion 6: the signup trigger is fully intact. tgfoid is compared
+-- directly against the function's regprocedure (not string-matched against
+-- pg_get_triggerdef() text, which can format the target differently), and
+-- row/timing/event are checked via tgtype's documented bit flags rather
+-- than any text form: bit 0 = ROW, bit 1 = BEFORE, bit 2 = INSERT,
+-- bit 3 = DELETE, bit 4 = UPDATE, bit 5 = TRUNCATE, bit 6 = INSTEAD OF;
+-- AFTER means neither the BEFORE nor INSTEAD OF bit is set. Proves exactly:
+-- row-level, AFTER, INSERT, and not BEFORE/INSTEAD OF/DELETE/UPDATE/
+-- TRUNCATE.
+DO $assert_trigger$
+DECLARE
+  trg_count int;
+  trg record;
+BEGIN
+  SELECT count(*) INTO trg_count
+  FROM pg_trigger
+  WHERE tgname = 'on_auth_user_created';
+
+  IF trg_count <> 1 THEN
+    RAISE EXCEPTION 'Expected exactly one on_auth_user_created trigger, found %', trg_count;
+  END IF;
+
+  SELECT tgenabled, tgrelid, tgfoid, tgtype
+    INTO trg
+  FROM pg_trigger
+  WHERE tgname = 'on_auth_user_created';
+
+  IF trg.tgenabled <> 'O' THEN
+    RAISE EXCEPTION 'on_auth_user_created is not in the normal enabled state (tgenabled = %)', trg.tgenabled;
+  END IF;
+
+  IF trg.tgrelid <> 'auth.users'::regclass THEN
+    RAISE EXCEPTION 'on_auth_user_created is no longer attached to auth.users (attached to %)', trg.tgrelid::regclass;
+  END IF;
+
+  IF trg.tgfoid <> 'public.handle_new_user()'::regprocedure THEN
+    RAISE EXCEPTION 'on_auth_user_created no longer targets public.handle_new_user() (targets %)', trg.tgfoid::regprocedure;
+  END IF;
+
+  IF (trg.tgtype & 1) = 0 THEN
+    RAISE EXCEPTION 'on_auth_user_created is not a row-level trigger (tgtype = %)', trg.tgtype;
+  END IF;
+  IF (trg.tgtype & 2) <> 0 THEN
+    RAISE EXCEPTION 'on_auth_user_created fires BEFORE, not AFTER (tgtype = %)', trg.tgtype;
+  END IF;
+  IF (trg.tgtype & 64) <> 0 THEN
+    RAISE EXCEPTION 'on_auth_user_created is INSTEAD OF, not AFTER (tgtype = %)', trg.tgtype;
+  END IF;
+  IF (trg.tgtype & 4) = 0 THEN
+    RAISE EXCEPTION 'on_auth_user_created does not fire on INSERT (tgtype = %)', trg.tgtype;
+  END IF;
+  IF (trg.tgtype & 8) <> 0 THEN
+    RAISE EXCEPTION 'on_auth_user_created unexpectedly also fires on DELETE (tgtype = %)', trg.tgtype;
+  END IF;
+  IF (trg.tgtype & 16) <> 0 THEN
+    RAISE EXCEPTION 'on_auth_user_created unexpectedly also fires on UPDATE (tgtype = %)', trg.tgtype;
+  END IF;
+  IF (trg.tgtype & 32) <> 0 THEN
+    RAISE EXCEPTION 'on_auth_user_created unexpectedly also fires on TRUNCATE (tgtype = %)', trg.tgtype;
+  END IF;
+
+  RAISE NOTICE 'Assertion passed: on_auth_user_created intact, enabled, row-level AFTER INSERT-only (not DELETE/UPDATE/TRUNCATE) on auth.users targeting handle_new_user().';
+END
+$assert_trigger$;
+
+-- If execution reaches this point, every assertion above passed. The
+-- human-readable queries below are kept for optional visual confirmation
+-- only — reaching ROLLBACK without an exception is already the proof.
 
 -- Verify EFFECTIVE table privileges WHILE STILL INSIDE the transaction.
 -- Expect: has_truncate/has_references/has_trigger/has_maintain all FALSE
@@ -279,9 +534,14 @@ WHERE p.pronamespace = 'public'::regnamespace
 -- Do NOT commit the dry run.
 ROLLBACK;
 
--- Confirm the probe table was actually removed by ROLLBACK and left no
--- trace — expect: true.
-SELECT to_regclass('public.__flowtrack_privilege_probe') IS NULL AS probe_table_gone;
+-- Final compact status row. dry_run_completed = true is only reachable if
+-- every assertion above passed without a RAISE EXCEPTION aborting the
+-- transaction first, so this single row is sufficient evidence of success
+-- even if the Supabase SQL Editor only surfaces this final result.
+-- Expect: dry_run_completed = true, probe_table_gone = true.
+SELECT
+  true AS dry_run_completed,
+  to_regclass('public.__flowtrack_privilege_probe') IS NULL AS probe_table_gone;
 
 -- Immediately re-run Step 0 (0a through 0h, including 0f-extended) here and
 -- confirm the output is identical to what you saved before Step 1 — this
