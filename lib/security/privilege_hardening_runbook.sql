@@ -9,6 +9,16 @@
 -- an instruction, not SQL. Step 5 (rollback) is only for use if Step 3/4
 -- reveals a problem after the real migration has been applied. The
 -- Appendix is optional and not required for Phase 1A sign-off.
+--
+-- Verified production facts this runbook is scoped to: current_user in the
+-- SQL Editor is postgres; postgres is NOT a superuser and is NOT a member
+-- of supabase_admin; all ten public tables and public.handle_new_user() are
+-- postgres-owned. Every step below therefore operates only on objects
+-- postgres owns or on postgres's own default-privilege entries — nothing
+-- here requires supabase_admin membership or superuser privilege. The one
+-- item that genuinely is out of postgres's reach (supabase_admin's own
+-- future-object defaults) is documented, not executed, in the
+-- "Supabase-managed follow-up" section near the end of this file.
 
 -- =======================================================================
 -- STEP 0 — Read-only baseline (run before anything else)
@@ -27,8 +37,10 @@ UNION ALL SELECT 'transactions_backup', COUNT(*) FROM public.transactions_backup
 UNION ALL SELECT 'users', COUNT(*) FROM public.users
 ORDER BY table_name;
 
--- 0b. RLS enabled state for every public table.
-SELECT relname AS table_name, relrowsecurity AS rls_enabled, relforcerowsecurity AS rls_forced
+-- 0b. RLS enabled state and owner for every public table (confirms the
+-- verified-postgres-owned fact this whole runbook is scoped to).
+SELECT relname AS table_name, relowner::regrole AS owner,
+       relrowsecurity AS rls_enabled, relforcerowsecurity AS rls_forced
 FROM pg_class
 WHERE relnamespace = 'public'::regnamespace
   AND relkind = 'r'
@@ -72,7 +84,7 @@ ORDER BY t.table_name, r.role_name;
 -- x=REFERENCES t=TRIGGER m=MAINTAIN.
 SELECT c.relname AS table_name, g.rolname AS grantee, priv.privilege_type
 FROM pg_class c
-CROSS JOIN LATERAL aclexplode(c.relacl) AS priv
+CROSS JOIN LATERAL aclexplode(COALESCE(c.relacl, acldefault('r', c.relowner))) AS priv
 JOIN pg_roles g ON g.oid = priv.grantee
 WHERE c.relnamespace = 'public'::regnamespace
   AND c.relkind = 'r'
@@ -81,11 +93,13 @@ ORDER BY table_name, grantee, privilege_type;
 
 -- 0e. Default ACLs for future public objects (tables and functions).
 -- defaclobjtype: 'r' = relation/table, 'f' = function. Informational only —
--- this migration corrects the 'r' (table) entries for postgres/
--- supabase_admin; it deliberately does NOT touch the 'f' (function) entries
--- this phase (see the note near the top of migration_privilege_hardening.sql
--- and lib/security/FUNCTION_PRIVILEGE_CONVENTION.md), so the 'f' rows here
--- are not a before/after comparison target for Step 3.
+-- this migration corrects the 'r' (table) entry for postgres; it
+-- deliberately does NOT touch supabase_admin's entries (postgres cannot —
+-- see "Supabase-managed follow-up" below) and does NOT touch the 'f'
+-- (function) entries this phase (see the note near the top of
+-- migration_privilege_hardening.sql and
+-- lib/security/FUNCTION_PRIVILEGE_CONVENTION.md), so those rows are not a
+-- before/after comparison target for Step 3.
 SELECT defaclrole::regrole AS default_owner, defaclnamespace::regnamespace AS schema,
        defaclobjtype, defaclacl
 FROM pg_default_acl
@@ -102,19 +116,25 @@ WHERE p.pronamespace = 'public'::regnamespace
 
 -- 0f-extended. Distinguishes an EXPLICIT EXECUTE grant to supabase_auth_admin
 -- from access that only exists because PUBLIC has EXECUTE (PUBLIC appears in
--- aclexplode output as grantee = 0). This determines whether the migration's
--- explicit GRANT to supabase_auth_admin is adding something new or merely
--- making an already-true fact explicit — record the result before migrating;
--- Step 5's rollback documentation depends on knowing which case this is.
+-- aclexplode output as grantee = 0). Uses COALESCE(proacl,
+-- acldefault('f', proowner)) so this is correct even if proacl happens to be
+-- NULL (meaning "no explicit ACL override yet, defer entirely to the
+-- compiled-in default") rather than silently reporting both as false in
+-- that case. This determines whether the migration's explicit GRANT to
+-- supabase_auth_admin is adding something new or merely making an already-
+-- true fact explicit — record the result before migrating; Step 5's
+-- rollback documentation depends on knowing which case this is.
 SELECT
   EXISTS (
-    SELECT 1 FROM pg_proc p, LATERAL aclexplode(p.proacl) a
+    SELECT 1
+    FROM pg_proc p, LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
     WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'handle_new_user'
       AND a.grantee = (SELECT oid FROM pg_roles WHERE rolname = 'supabase_auth_admin')
       AND a.privilege_type = 'EXECUTE'
   ) AS supabase_auth_admin_has_explicit_execute_grant,
   EXISTS (
-    SELECT 1 FROM pg_proc p, LATERAL aclexplode(p.proacl) a
+    SELECT 1
+    FROM pg_proc p, LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
     WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'handle_new_user'
       AND a.grantee = 0  -- 0 = the PUBLIC pseudo-role in aclexplode output
       AND a.privilege_type = 'EXECUTE'
@@ -127,8 +147,13 @@ WHERE tgname = 'on_auth_user_created';
 
 -- 0h. Confirm supabase_auth_admin can currently execute the function
 -- (effective privilege — true whether the access is explicit or inherited
--- via PUBLIC; use 0f-extended to tell those two cases apart).
-SELECT has_function_privilege('supabase_auth_admin', 'public.handle_new_user()', 'EXECUTE') AS can_execute;
+-- via PUBLIC; use 0f-extended to tell those two cases apart). anon and
+-- authenticated are legitimate has_function_privilege() targets — they are
+-- ordinary login/group roles, not the PUBLIC pseudo-role.
+SELECT
+  has_function_privilege('anon', 'public.handle_new_user()', 'EXECUTE')                AS anon_can_execute,
+  has_function_privilege('authenticated', 'public.handle_new_user()', 'EXECUTE')       AS authenticated_can_execute,
+  has_function_privilege('supabase_auth_admin', 'public.handle_new_user()', 'EXECUTE') AS supabase_auth_admin_can_execute;
 
 -- Save the output of 0a–0h somewhere before continuing — Steps 3 and 4
 -- compare against this baseline.
@@ -137,37 +162,61 @@ SELECT has_function_privilege('supabase_auth_admin', 'public.handle_new_user()',
 -- =======================================================================
 -- STEP 1 — Transactional dry run (proves the migration works and that
 -- rolling it back returns the database to its exact original state).
--- Verifies EFFECTIVE privileges via has_table_privilege()/
--- has_function_privilege(), not just that REVOKE/GRANT text was run.
+-- Verifies EFFECTIVE privileges via has_table_privilege() for anon/
+-- authenticated/supabase_auth_admin, and via direct ACL inspection
+-- (aclexplode + grantee = 0) for PUBLIC, since PUBLIC is a pseudo-role, not
+-- a normal login role, and has_function_privilege('public', ...) is not the
+-- correct way to query it. Also creates one disposable probe table, purely
+-- inside this transaction, to empirically prove the future-table default
+-- correction is actually effective for a newly created table, rather than
+-- assuming it worked because the REVOKE/ALTER DEFAULT PRIVILEGES statement
+-- executed without error.
 -- =======================================================================
 
 BEGIN;
 
--- Same preflight check as the real migration.
-DO $preflight$
-BEGIN
-  IF NOT (
-    pg_has_role(current_user, 'supabase_admin', 'MEMBER')
-    OR (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)
-  ) THEN
-    RAISE EXCEPTION
-      'Preflight failed: role "%" cannot run ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin. See the "If the preflight check fails" section below.',
-      current_user;
-  END IF;
-END
-$preflight$;
-
-REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN
-  ON ALL TABLES IN SCHEMA public
+REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON
+  public.budgets,
+  public.budgets_backup,
+  public.categories,
+  public.categories_backup,
+  public.debts,
+  public.plan,
+  public.profiles,
+  public.transactions,
+  public.transactions_backup,
+  public.users
   FROM anon, authenticated;
 
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
   REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN
   ON TABLES FROM anon, authenticated;
 
-ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
-  REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN
-  ON TABLES FROM anon, authenticated;
+-- Empirical probe: do not assume the ALTER DEFAULT PRIVILEGES statement
+-- above changed effective future-table defaults merely because it executed
+-- successfully. Create one uniquely named, disposable table AFTER that
+-- statement — this exercises the default exactly the way a real future
+-- table creation would — and check its EFFECTIVE privileges directly. This
+-- table exists ONLY inside this Step 1 transaction, uses no user data,
+-- modifies no existing table, is never added to
+-- migration_privilege_hardening.sql, and is never created outside this dry
+-- run — it is removed automatically by the ROLLBACK below.
+CREATE TABLE public.__flowtrack_privilege_probe (
+  id bigint
+);
+
+SELECT
+  has_table_privilege('anon', 'public.__flowtrack_privilege_probe', 'TRUNCATE')            AS anon_has_truncate,
+  has_table_privilege('anon', 'public.__flowtrack_privilege_probe', 'REFERENCES')          AS anon_has_references,
+  has_table_privilege('anon', 'public.__flowtrack_privilege_probe', 'TRIGGER')             AS anon_has_trigger,
+  has_table_privilege('anon', 'public.__flowtrack_privilege_probe', 'MAINTAIN')            AS anon_has_maintain,
+  has_table_privilege('authenticated', 'public.__flowtrack_privilege_probe', 'TRUNCATE')   AS authenticated_has_truncate,
+  has_table_privilege('authenticated', 'public.__flowtrack_privilege_probe', 'REFERENCES') AS authenticated_has_references,
+  has_table_privilege('authenticated', 'public.__flowtrack_privilege_probe', 'TRIGGER')    AS authenticated_has_trigger,
+  has_table_privilege('authenticated', 'public.__flowtrack_privilege_probe', 'MAINTAIN')   AS authenticated_has_maintain;
+-- Expect ALL EIGHT columns FALSE for both roles. This is the actual proof
+-- that the corrected default is effective for a newly created table, not
+-- just that the REVOKE/ALTER DEFAULT PRIVILEGES text ran without error.
 
 ALTER FUNCTION public.handle_new_user() SET search_path = '';
 
@@ -177,7 +226,8 @@ GRANT EXECUTE ON FUNCTION public.handle_new_user() TO supabase_auth_admin;
 -- Verify EFFECTIVE table privileges WHILE STILL INSIDE the transaction.
 -- Expect: has_truncate/has_references/has_trigger/has_maintain all FALSE
 -- for anon and authenticated on every table; has_select/insert/update/
--- delete UNCHANGED from the Step 0d baseline (compare row-by-row).
+-- delete UNCHANGED from the Step 0d baseline (compare row-by-row) — this is
+-- the proof that ordinary CRUD remains untouched.
 WITH tables(table_name) AS (
   VALUES ('budgets'), ('budgets_backup'), ('categories'), ('categories_backup'),
          ('debts'), ('plan'), ('profiles'), ('transactions'),
@@ -200,12 +250,22 @@ SELECT
 FROM tables t CROSS JOIN roles r
 ORDER BY t.table_name, r.role_name;
 
--- Verify EFFECTIVE function privileges. Expect: public/anon_can_execute/
--- authenticated_can_execute all FALSE, supabase_auth_admin_can_execute TRUE.
--- ('public' as a literal lowercase string is specially interpreted by
--- has_function_privilege() to mean the PUBLIC pseudo-role.)
+-- Verify EFFECTIVE function privileges.
+-- PUBLIC: inspected directly via the ACL (grantee = 0), NOT via
+-- has_function_privilege('public', ...) — PUBLIC is a pseudo-role/grantee,
+-- not a normal login role, and this is the correct way to check it.
+-- anon / authenticated / supabase_auth_admin: has_function_privilege() is
+-- correct for these, since they are ordinary roles.
+-- Expect: public_has_execute FALSE, anon_can_execute FALSE,
+-- authenticated_can_execute FALSE, supabase_auth_admin_can_execute TRUE.
 SELECT
-  has_function_privilege('public', 'public.handle_new_user()', 'EXECUTE')              AS public_can_execute,
+  EXISTS (
+    SELECT 1
+    FROM pg_proc p, LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
+    WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'handle_new_user'
+      AND a.grantee = 0
+      AND a.privilege_type = 'EXECUTE'
+  ) AS public_has_execute,
   has_function_privilege('anon', 'public.handle_new_user()', 'EXECUTE')                AS anon_can_execute,
   has_function_privilege('authenticated', 'public.handle_new_user()', 'EXECUTE')       AS authenticated_can_execute,
   has_function_privilege('supabase_auth_admin', 'public.handle_new_user()', 'EXECUTE') AS supabase_auth_admin_can_execute;
@@ -219,10 +279,18 @@ WHERE p.pronamespace = 'public'::regnamespace
 -- Do NOT commit the dry run.
 ROLLBACK;
 
+-- Confirm the probe table was actually removed by ROLLBACK and left no
+-- trace — expect: true.
+SELECT to_regclass('public.__flowtrack_privilege_probe') IS NULL AS probe_table_gone;
+
 -- Immediately re-run Step 0 (0a through 0h, including 0f-extended) here and
 -- confirm the output is identical to what you saved before Step 1 — this
 -- proves ROLLBACK genuinely restored the original state and the dry run
--- left nothing behind.
+-- left nothing behind. In particular, re-run 0e (default ACLs) and confirm
+-- the postgres/public/'r' (table) default-ACL entry is byte-for-byte
+-- identical to its original baseline value — the probe above proves the
+-- corrected default was effective DURING the transaction; this confirms it
+-- left no permanent change after rollback either.
 
 
 -- =======================================================================
@@ -252,8 +320,10 @@ UNION ALL SELECT 'transactions_backup', COUNT(*) FROM public.transactions_backup
 UNION ALL SELECT 'users', COUNT(*) FROM public.users
 ORDER BY table_name;
 
--- RLS still enabled exactly as in Step 0b (compare row-by-row).
-SELECT relname AS table_name, relrowsecurity AS rls_enabled, relforcerowsecurity AS rls_forced
+-- RLS still enabled and owner unchanged, exactly as in Step 0b (compare
+-- row-by-row).
+SELECT relname AS table_name, relowner::regrole AS owner,
+       relrowsecurity AS rls_enabled, relforcerowsecurity AS rls_forced
 FROM pg_class
 WHERE relnamespace = 'public'::regnamespace
   AND relkind = 'r'
@@ -296,41 +366,49 @@ ORDER BY t.table_name, r.role_name;
 -- service_role in any REVOKE/GRANT statement, so this should be identical).
 SELECT c.relname AS table_name, g.rolname AS grantee, priv.privilege_type
 FROM pg_class c
-CROSS JOIN LATERAL aclexplode(c.relacl) AS priv
+CROSS JOIN LATERAL aclexplode(COALESCE(c.relacl, acldefault('r', c.relowner))) AS priv
 JOIN pg_roles g ON g.oid = priv.grantee
 WHERE c.relnamespace = 'public'::regnamespace
   AND c.relkind = 'r'
   AND g.rolname = 'service_role'
 ORDER BY table_name, privilege_type;
 
--- Future table default ACLs corrected — compare against Step 0e; the 'r'
--- (table) rows for postgres/supabase_admin should no longer show D/x/t/m
--- for anon/authenticated. The 'f' (function) rows are NOT expected to have
--- changed — this migration does not touch them (see Step 0e's note); a
--- future public function's privileges are guarded per-migration by
--- lib/security/function_privilege_convention.test.ts instead.
+-- Future table default ACLs corrected for postgres — compare against Step
+-- 0e; the 'r' (table) row for postgres should no longer show D/x/t/m for
+-- anon/authenticated. supabase_admin's rows and the 'f' (function) rows are
+-- NOT expected to have changed — this migration does not touch them (see
+-- Step 0e's note and the "Supabase-managed follow-up" section below).
 SELECT defaclrole::regrole AS default_owner, defaclnamespace::regnamespace AS schema,
        defaclobjtype, defaclacl
 FROM pg_default_acl
 WHERE defaclnamespace = 'public'::regnamespace
 ORDER BY default_owner, defaclobjtype;
 
--- handle_new_user: still SECURITY DEFINER, search_path fixed.
+-- handle_new_user: still SECURITY DEFINER, search_path fixed, no rewritten
+-- body, trigger untouched.
 SELECT p.proname, r.rolname AS owner, p.prosecdef AS security_definer, p.proconfig AS config_settings
 FROM pg_proc p
 JOIN pg_roles r ON r.oid = p.proowner
 WHERE p.pronamespace = 'public'::regnamespace
   AND p.proname = 'handle_new_user';
 
--- EFFECTIVE function privileges. Expect all three of the first columns
--- FALSE and the last TRUE.
+-- EFFECTIVE function privileges, same PUBLIC-via-ACL / has_function_privilege
+-- split as Step 1. Expect public_has_execute/anon_can_execute/
+-- authenticated_can_execute all FALSE, supabase_auth_admin_can_execute TRUE.
 SELECT
-  has_function_privilege('public', 'public.handle_new_user()', 'EXECUTE')              AS public_can_execute,
+  EXISTS (
+    SELECT 1
+    FROM pg_proc p, LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
+    WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'handle_new_user'
+      AND a.grantee = 0
+      AND a.privilege_type = 'EXECUTE'
+  ) AS public_has_execute,
   has_function_privilege('anon', 'public.handle_new_user()', 'EXECUTE')                AS anon_can_execute,
   has_function_privilege('authenticated', 'public.handle_new_user()', 'EXECUTE')       AS authenticated_can_execute,
   has_function_privilege('supabase_auth_admin', 'public.handle_new_user()', 'EXECUTE') AS supabase_auth_admin_can_execute;
 
--- Trigger still exists and still targets public.handle_new_user().
+-- Trigger still exists and still targets public.handle_new_user() —
+-- confirms the trigger and function body were never touched.
 SELECT tgname, tgrelid::regclass AS table_name, tgenabled, pg_get_triggerdef(oid) AS definition
 FROM pg_trigger
 WHERE tgname = 'on_auth_user_created';
@@ -397,8 +475,8 @@ DELETE FROM public.profiles WHERE email = '<the test email you used>';
 BEGIN;
 
 -- Restore table privileges to exactly the ten known baseline tables
--- (reverses Step 2's item 1 only — this migration never modified SELECT/
--- INSERT/UPDATE/DELETE, so nothing to restore there).
+-- (reverses the migration's item A only — this migration never modified
+-- SELECT/INSERT/UPDATE/DELETE, so nothing to restore there).
 GRANT TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON
   public.budgets,
   public.budgets_backup,
@@ -412,12 +490,10 @@ GRANT TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON
   public.users
   TO anon, authenticated;
 
--- Restore future-table defaults.
+-- Restore future-table defaults for postgres only — this migration never
+-- touched supabase_admin's defaults (postgres cannot), so there is nothing
+-- to restore for that role.
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
-  GRANT TRUNCATE, REFERENCES, TRIGGER, MAINTAIN
-  ON TABLES TO anon, authenticated;
-
-ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
   GRANT TRUNCATE, REFERENCES, TRIGGER, MAINTAIN
   ON TABLES TO anon, authenticated;
 
@@ -441,7 +517,8 @@ ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
 -- Either way, the end state always leaves supabase_auth_admin able to
 -- execute the function — the only question this note resolves is whether
 -- that access is "the same as before" or "the same access, now also made
--- explicit where it previously wasn't."
+-- explicit where it previously wasn't." This rollback does not claim
+-- byte-for-byte restoration in the first case, and says so explicitly.
 ALTER FUNCTION public.handle_new_user() RESET search_path;
 GRANT EXECUTE ON FUNCTION public.handle_new_user() TO PUBLIC, anon, authenticated;
 
@@ -453,25 +530,35 @@ COMMIT;
 
 
 -- =======================================================================
--- If the preflight check fails
+-- Supabase-managed follow-up — not executable by Alberto
 -- =======================================================================
--- If Step 1's dry run raises the preflight exception, the postgres role
--- used by the SQL Editor is not a member of supabase_admin and is not a
--- superuser in this project. Do not grant supabase_admin membership to
--- postgres and do not attempt any other privilege-escalation workaround
--- to get around this. The correct path is to open a support request with
--- Supabase asking them to apply, on their side, exactly this statement
--- against the FlowTrack project database:
+-- postgres is not a superuser and is not a member of supabase_admin, so it
+-- cannot run ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin — Postgres
+-- requires the executing role to either BE the target role, be a direct or
+-- indirect member of it, or be a superuser. None of those hold for postgres
+-- with respect to supabase_admin in this project.
+--
+-- This is not a blocker for Phase 1A: all ten verified FlowTrack tables and
+-- public.handle_new_user() are postgres-owned (confirmed in Step 0b/0f), so
+-- every privilege correction this phase needs is fully covered by what
+-- postgres can already do on its own objects. Existing FlowTrack tables are
+-- unaffected by supabase_admin's default-privilege configuration.
+--
+-- If a later phase determines that a supabase_admin-created public table
+-- also needs its default TRUNCATE/REFERENCES/TRIGGER/MAINTAIN privileges
+-- corrected (e.g. because Supabase's own platform tooling starts creating
+-- tables in public as supabase_admin), the following statement is what
+-- would need to be applied — but it must be requested through Supabase
+-- Support or another Supabase-authorized managed-role process, not run by
+-- Alberto, and not by granting postgres membership in supabase_admin or any
+-- other permission-bypass workaround:
 --
 --   ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
 --     REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN
 --     ON TABLES FROM anon, authenticated;
 --
--- Everything else in migration_privilege_hardening.sql (the existing-table
--- REVOKE, the postgres-owned table-default correction, and the
--- handle_new_user hardening) does not depend on supabase_admin membership
--- and can be applied independently while the supabase_admin-scoped
--- correction is pending with Supabase Support.
+-- Treat this as a documented residual hardening item to revisit if/when it
+-- becomes relevant, not as something Phase 1A depends on.
 
 
 -- =======================================================================
@@ -486,7 +573,9 @@ COMMIT;
 -- the per-function convention, this is a safe, rollback-only way to prove
 -- whether it's effective on this specific database before adopting it —
 -- it creates one throwaway function, checks its effective privileges, and
--- rolls everything back, leaving no trace.
+-- rolls everything back, leaving no trace. Scoped to postgres only, since
+-- postgres is the role that would create such a function in practice and
+-- is the only role this proof needs to reason about.
 
 BEGIN;
 
@@ -499,20 +588,29 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
 CREATE FUNCTION public._phase1a_default_privilege_probe() RETURNS void
 LANGUAGE sql AS $$ SELECT 1 $$;
 
--- If the default-privilege change is effective, all three of these should
--- be FALSE. If any is TRUE, the ALTER DEFAULT PRIVILEGES statement did not
--- prevent PUBLIC-equivalent access for that role on this database, and the
+-- If the default-privilege change is effective, public_has_execute should
+-- be FALSE and anon/authenticated_can_execute should be FALSE. If any is
+-- TRUE, the ALTER DEFAULT PRIVILEGES statement did not prevent
+-- PUBLIC-equivalent access for that role on this database, and the
 -- per-function convention (not a schema-wide default) remains the correct
--- and only approach.
+-- and only approach. PUBLIC is checked via direct ACL inspection, not
+-- has_function_privilege('public', ...), for the same reason as Steps 1/3.
 SELECT
-  has_function_privilege('public', 'public._phase1a_default_privilege_probe()', 'EXECUTE') AS public_can_execute,
-  has_function_privilege('anon', 'public._phase1a_default_privilege_probe()', 'EXECUTE')    AS anon_can_execute,
+  EXISTS (
+    SELECT 1
+    FROM pg_proc p, LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
+    WHERE p.pronamespace = 'public'::regnamespace
+      AND p.proname = '_phase1a_default_privilege_probe'
+      AND a.grantee = 0
+      AND a.privilege_type = 'EXECUTE'
+  ) AS public_has_execute,
+  has_function_privilege('anon', 'public._phase1a_default_privilege_probe()', 'EXECUTE')          AS anon_can_execute,
   has_function_privilege('authenticated', 'public._phase1a_default_privilege_probe()', 'EXECUTE') AS authenticated_can_execute;
 
 DROP FUNCTION public._phase1a_default_privilege_probe();
 
 ROLLBACK;
 
--- Re-run Step 0e afterward and confirm the 'f' (function) default-ACL rows
--- for postgres/public are unchanged from the original baseline — proving
+-- Re-run Step 0e afterward and confirm the 'f' (function) default-ACL row
+-- for postgres/public is unchanged from the original baseline — proving
 -- this probe left nothing behind.

@@ -3,21 +3,41 @@
 -- once. Wrapped in a single transaction: any failure rolls back everything,
 -- so there is never a partially-applied privilege state.
 --
+-- Verified production facts this migration is scoped to: current_user in
+-- the SQL Editor is postgres; postgres owns all ten public tables (budgets,
+-- budgets_backup, categories, categories_backup, debts, plan, profiles,
+-- transactions, transactions_backup, users) and owns
+-- public.handle_new_user(). Every statement below operates on objects
+-- postgres owns, which postgres can always REVOKE/GRANT/ALTER on directly —
+-- no elevated role membership or superuser privilege is required for any
+-- statement in this file.
+--
 -- Scope: removes privileges that were never intentionally granted and that
 -- FlowTrack's application code never uses (TRUNCATE, REFERENCES, TRIGGER,
 -- MAINTAIN) from the anon and authenticated roles — both on the ten
--- existing public tables (budgets, budgets_backup, categories,
--- categories_backup, debts, plan, profiles, transactions,
--- transactions_backup, users) and, via ALTER DEFAULT PRIVILEGES, on any
--- future public table created by postgres or supabase_admin. It also locks
--- down public.handle_new_user() (the auth signup trigger function) with a
--- fixed empty search_path and a narrowed EXECUTE grant limited to
--- supabase_auth_admin.
+-- existing, verified-postgres-owned public tables (listed explicitly below,
+-- not via "ALL TABLES IN SCHEMA public", so the migration's scope stays
+-- tied to the verified inventory rather than silently picking up whatever
+-- happens to exist in the schema at run time) and, via
+-- ALTER DEFAULT PRIVILEGES FOR ROLE postgres, on any future public table
+-- postgres creates. It also locks down public.handle_new_user() (the auth
+-- signup trigger function) with a fixed empty search_path and a narrowed
+-- EXECUTE grant limited to supabase_auth_admin.
 --
 -- Deliberately NOT touched by this migration: SELECT/INSERT/UPDATE/DELETE
 -- grants (FlowTrack's existing CRUD access is unchanged), service_role,
 -- database-owner privileges, any RLS policy, any row of data, and
 -- handle_new_user's INSERT/ON CONFLICT behavior or 'free' default plan.
+--
+-- Deliberately NOT included: any statement touching supabase_admin.
+-- postgres is not a superuser and is not a member of supabase_admin, so it
+-- cannot run ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin — and doesn't
+-- need to, since all ten verified tables and handle_new_user() are
+-- postgres-owned, not supabase_admin-owned. If a supabase_admin-owned
+-- public table is ever introduced, its default privileges are a separate,
+-- documented residual item — see the "Supabase-managed follow-up" section
+-- of lib/security/privilege_hardening_runbook.sql. It is not part of this
+-- executable migration and is not a blocker for this phase.
 --
 -- Deliberately NOT included: an ALTER DEFAULT PRIVILEGES ... ON FUNCTIONS
 -- change to make future public functions non-executable by default. Postgres
@@ -46,56 +66,41 @@
 BEGIN;
 
 -- ---------------------------------------------------------------------
--- Preflight: ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin can only be
--- executed by supabase_admin itself, a direct/indirect member of
--- supabase_admin, or a superuser. The SQL Editor's session role (postgres)
--- may or may not have that membership in this project. Fail loudly and
--- immediately, before any privilege is touched, rather than silently
--- skipping the supabase_admin table-default correction if it isn't
--- permitted.
+-- A. Existing postgres-owned tables: revoke unused privileges from anon
+-- and authenticated on exactly the ten verified tables. SELECT/INSERT/
+-- UPDATE/DELETE are untouched — this only removes privileges FlowTrack's
+-- application code has never used. Idempotent: revoking a privilege a
+-- role doesn't currently hold is a no-op, not an error.
 -- ---------------------------------------------------------------------
-DO $preflight$
-BEGIN
-  IF NOT (
-    pg_has_role(current_user, 'supabase_admin', 'MEMBER')
-    OR (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)
-  ) THEN
-    RAISE EXCEPTION
-      'Preflight failed: role "%" is not a member of supabase_admin and is not a superuser, so it cannot run ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin. No privileges have been changed by this migration. Manual alternative: see the "If the preflight check fails" section of lib/security/privilege_hardening_runbook.sql — this requires Supabase Support to apply the supabase_admin-scoped statement on your behalf, since supabase_admin is a Supabase-managed role. Do not grant supabase_admin membership to postgres, and do not attempt any other permission bypass to work around this.',
-      current_user;
-  END IF;
-END
-$preflight$;
-
--- ---------------------------------------------------------------------
--- 1. Existing tables: revoke unused privileges from anon and authenticated.
--- SELECT/INSERT/UPDATE/DELETE are untouched — this only removes privileges
--- FlowTrack's application code has never used. Idempotent: revoking a
--- privilege a role doesn't currently hold is a no-op, not an error.
--- ---------------------------------------------------------------------
-REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN
-  ON ALL TABLES IN SCHEMA public
+REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON
+  public.budgets,
+  public.budgets_backup,
+  public.categories,
+  public.categories_backup,
+  public.debts,
+  public.plan,
+  public.profiles,
+  public.transactions,
+  public.transactions_backup,
+  public.users
   FROM anon, authenticated;
 
 -- ---------------------------------------------------------------------
--- 2. Future tables: correct the default privilege set so anything created
--- later by postgres or supabase_admin does not automatically hand anon/
--- authenticated the same four unused privileges. Existing default CRUD
+-- B. Future tables created by postgres: correct the default privilege set
+-- so anything postgres creates later in public does not automatically hand
+-- anon/authenticated the same four unused privileges. Existing default CRUD
 -- grants for anon/authenticated are intentionally left as-is for now — a
--- broader anon-role reduction is a separate, later audit. (This is a TABLE
--- default-privilege correction, not a function one — see the note above on
--- why the function-default case is deliberately excluded from this phase.)
+-- broader anon-role reduction is a separate, later audit. Scoped to
+-- postgres only — see the note above on why supabase_admin is out of scope
+-- both technically (postgres cannot alter its defaults) and practically
+-- (no verified table is supabase_admin-owned).
 -- ---------------------------------------------------------------------
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
   REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN
   ON TABLES FROM anon, authenticated;
 
-ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
-  REVOKE TRUNCATE, REFERENCES, TRIGGER, MAINTAIN
-  ON TABLES FROM anon, authenticated;
-
 -- ---------------------------------------------------------------------
--- 3. Harden public.handle_new_user(), the SECURITY DEFINER signup-trigger
+-- C. Harden public.handle_new_user(), the SECURITY DEFINER signup-trigger
 -- function fired by on_auth_user_created (AFTER INSERT on auth.users).
 -- The function BODY is not changed — its exact INSERT ... ON CONFLICT
 -- behavior, columns, and 'free' default plan are preserved unmodified.
@@ -112,7 +117,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
 --     inheritance from PUBLIC is not yet confirmed — see Step 0's extended
 --     ACL check in the runbook before relying on either assumption.
 -- The trigger itself (on_auth_user_created) is not dropped or recreated,
--- and no row in auth.users is read, written, or touched.
+-- and no row in auth.users is read, written, or touched. postgres owns
+-- this function, so no elevated privilege is needed for any of these three
+-- statements.
 -- ---------------------------------------------------------------------
 ALTER FUNCTION public.handle_new_user() SET search_path = '';
 
