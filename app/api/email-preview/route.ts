@@ -11,10 +11,10 @@ import type { DailyReport, CongratulationsReport, WeeklyReport, MonthlyReport } 
 export const runtime = "nodejs";
 
 const mockDaily: DailyReport = {
-  userName: "Alberto",
-  userEmail: "demo@flowtrack.com",
+  userName: "Jordan Rivera",
+  userEmail: "preview.user@example.com",
   emailType: "good_morning",
-  greeting: "Good morning, Alberto.",
+  greeting: "Good morning, Jordan.",
   bills: [
     {
       name: "Apple Card",
@@ -56,8 +56,8 @@ const mockDaily: DailyReport = {
 };
 
 const mockCongrats: CongratulationsReport = {
-  userName: "Alberto",
-  userEmail: "demo@flowtrack.com",
+  userName: "Jordan Rivera",
+  userEmail: "preview.user@example.com",
   emailType: "congratulations",
   achievement: "First Debt Paid Off",
   detail: "You've completely paid off your Discover card. That's real progress.",
@@ -67,8 +67,8 @@ const mockCongrats: CongratulationsReport = {
 };
 
 const mockWeekly: WeeklyReport = {
-  userName: "Alberto",
-  userEmail: "demo@flowtrack.com",
+  userName: "Jordan Rivera",
+  userEmail: "preview.user@example.com",
   emailType: "weekly_progress",
   periodLabel: "June 21 – June 28, 2026",
   totalIncome: 1125,
@@ -84,8 +84,8 @@ const mockWeekly: WeeklyReport = {
 };
 
 const mockMonthly: MonthlyReport = {
-  userName: "Alberto",
-  userEmail: "demo@flowtrack.com",
+  userName: "Jordan Rivera",
+  userEmail: "preview.user@example.com",
   emailType: "monthly_progress",
   monthLabel: "June 2026",
   totalIncome: 4500,
@@ -140,6 +140,14 @@ const mockBillLegacy = singleBillReport({
 });
 
 export async function GET(req: Request) {
+  // Same reasoning as app/api/test-email/route.ts: next build sets
+  // NODE_ENV=production for both Vercel Preview and Production, so this
+  // removes the route from every deployed environment and leaves it
+  // available only under `next dev`.
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type") ?? "good_morning";
 
