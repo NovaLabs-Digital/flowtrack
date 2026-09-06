@@ -12,11 +12,17 @@ bad trade against an explicit, per-function rule that is correct no matter
 how the default behaves.
 
 **Every future migration that runs `CREATE FUNCTION` or
-`CREATE OR REPLACE FUNCTION` for a `public` schema function must, in the
-same migration file, also:**
+`CREATE OR REPLACE FUNCTION`, in any schema, must, in the same migration
+file, also:**
 
-1. `REVOKE EXECUTE ON FUNCTION public.<name>(...) FROM PUBLIC, anon, authenticated;`
-2. `GRANT EXECUTE ON FUNCTION public.<name>(...) TO <only the roles that need it>;`
+1. `REVOKE EXECUTE ON FUNCTION <schema>.<name>(...) FROM PUBLIC, anon, authenticated;`
+2. `GRANT EXECUTE ON FUNCTION <schema>.<name>(...) TO <only the roles that need it>;`
+
+This applies regardless of which schema the function lives in — including a
+dedicated non-exposed schema such as `flowtrack_private` — since the implicit
+`PUBLIC` grant Postgres adds on `CREATE FUNCTION` is schema-independent, and
+relying on a schema not being PostgREST-exposed is a separate, complementary
+control, not a substitute for an explicit grant.
 
 No public function may rely on the implicit `PUBLIC` grant. If a function is
 meant to be callable by, e.g., `authenticated`, that must be a deliberate,

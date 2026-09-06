@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseclient";
 import HelpModal from "@/app/components/HelpModal";
+import SecuritySettings from "@/app/components/SecuritySettings";
 import { resolveTimeZone, DEFAULT_TIME_ZONE } from "@/lib/profile/timezone";
 
 const COMMON_TIME_ZONES = [
@@ -353,6 +354,10 @@ export default function SettingsPage() {
               </div>
             )}
           </section>
+
+          <div className="md:col-span-2">
+            <SecuritySettings />
+          </div>
 
         </div>
       </div>

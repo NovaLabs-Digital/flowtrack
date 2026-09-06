@@ -1,13 +1,24 @@
 // app/login/page.tsx
 "use client";
 
-import { useState, FormEvent, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, FormEvent, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseclient";
 import { useAuth } from "@/app/context/AuthContext";
+import { decideAalAction, AalLevel } from "@/lib/mfa/aal";
+import { sanitizeNextPath } from "@/lib/mfa/nextUrl";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
 
   const [email, setEmail] = useState("");
@@ -60,12 +71,25 @@ export default function LoginPage() {
         return;
       }
 
-      setDebugStatus("Login success. Redirecting to dashboard…");
+      // Never reveal MFA status before the password succeeds — this check
+      // only happens once signInWithPassword has already returned success.
+      const intendedNext = sanitizeNextPath(searchParams?.get("next"));
+      const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      const decision = aalData
+        ? decideAalAction({
+            hasSession: true,
+            currentLevel: aalData.currentLevel as AalLevel,
+            nextLevel: aalData.nextLevel as AalLevel,
+          })
+        : "continue";
 
-      // ✅ Hard redirect so it behaves like when you type /dashboard manually
-      setTimeout(() => {
-        window.location.href = "/dashboard";
-      }, 150);
+      if (decision === "challenge") {
+        setDebugStatus("Login success. Two-step verification required…");
+        router.push(`/mfa-challenge?next=${encodeURIComponent(intendedNext)}`);
+      } else {
+        setDebugStatus("Login success. Redirecting…");
+        router.push(intendedNext);
+      }
     } catch (err: any) {
       console.error("Unexpected login error:", err);
       setErrorMessage("Unexpected error during login.");

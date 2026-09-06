@@ -67,12 +67,15 @@ describe("function privilege convention: every CREATE FUNCTION migration is self
       const createdFunctions = extractCreatedFunctionNames(sql);
 
       for (const name of createdFunctions) {
+        // Schema prefix may be any schema (e.g. "public." or
+        // "flowtrack_private."), or omitted entirely — the convention
+        // applies regardless of which schema the function lives in.
         const revokePattern = new RegExp(
-          `REVOKE\\s+EXECUTE\\s+ON\\s+FUNCTION[S]?\\s+(?:public\\.)?${name}\\b`,
+          `REVOKE\\s+EXECUTE\\s+ON\\s+FUNCTION[S]?\\s+(?:\\w+\\.)?${name}\\b`,
           "i"
         );
         const grantPattern = new RegExp(
-          `GRANT\\s+EXECUTE\\s+ON\\s+FUNCTION[S]?\\s+(?:public\\.)?${name}\\b`,
+          `GRANT\\s+EXECUTE\\s+ON\\s+FUNCTION[S]?\\s+(?:\\w+\\.)?${name}\\b`,
           "i"
         );
 

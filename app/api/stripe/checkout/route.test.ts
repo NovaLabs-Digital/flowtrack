@@ -40,6 +40,14 @@ describe("existing behavior preserved", () => {
     expect(source).toMatch(/status:\s*401/);
   });
 
+  it("the 401 (invalid/missing bearer) check happens before the MFA check, and is unmodified", () => {
+    const unauthorizedIndex = source.indexOf('{ error: "Unauthorized" }, { status: 401 }');
+    const mfaCheckIndex = source.indexOf("checkMfaAuthorization(");
+    expect(unauthorizedIndex).toBeGreaterThan(-1);
+    expect(mfaCheckIndex).toBeGreaterThan(-1);
+    expect(unauthorizedIndex).toBeLessThan(mfaCheckIndex);
+  });
+
   it("still binds to the existing Stripe customer when one exists, else uses customer_email", () => {
     expect(source).toContain("stripeCustomerId");
     expect(source).toContain("customer_email: email");
@@ -56,5 +64,23 @@ describe("existing behavior preserved", () => {
   it("still creates a subscription-mode session with a single line item", () => {
     expect(source).toContain('mode: "subscription"');
     expect(source).toContain("line_items: [{ price: priceId, quantity: 1 }]");
+  });
+});
+
+describe("MFA/AAL enforcement (Security Phase 1C)", () => {
+  it("imports and calls the shared server-side MFA authorization helper", () => {
+    expect(source).toContain('from "@/lib/mfa/serverAuthorize"');
+    expect(source).toContain("checkMfaAuthorization(supabaseAdmin, token, userId)");
+  });
+
+  it("denies with the shared generic MFA denial body/status, not a bespoke message", () => {
+    expect(source).toMatch(/if \(!authorized\) \{/);
+    expect(source).toContain("NextResponse.json(MFA_DENIAL_BODY, { status: MFA_DENIAL_STATUS })");
+  });
+
+  it("the MFA check runs before any Stripe/customer logic", () => {
+    const mfaCheckIndex = source.indexOf("checkMfaAuthorization(");
+    const stripeSessionIndex = source.indexOf("stripe.checkout.sessions.create(");
+    expect(mfaCheckIndex).toBeLessThan(stripeSessionIndex);
   });
 });

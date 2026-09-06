@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { checkMfaAuthorization, MFA_DENIAL_BODY, MFA_DENIAL_STATUS } from "@/lib/mfa/serverAuthorize";
 
 export const runtime = "nodejs";
 
@@ -21,6 +22,11 @@ export async function POST(req: Request) {
     const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { authorized } = await checkMfaAuthorization(supabaseAdmin, token, user.id);
+    if (!authorized) {
+      return NextResponse.json(MFA_DENIAL_BODY, { status: MFA_DENIAL_STATUS });
     }
 
     const { data: profile, error } = await supabaseAdmin
