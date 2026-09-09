@@ -5,8 +5,19 @@ import {
   renderCongratulations,
   renderWeeklyProgress,
   renderMonthlyProgress,
+  renderWelcome,
+  renderFeedback48h,
+  renderCheckin7d,
 } from "@/lib/daily-companion";
-import type { DailyReport, CongratulationsReport, WeeklyReport, MonthlyReport } from "@/lib/daily-companion";
+import type {
+  DailyReport,
+  CongratulationsReport,
+  WeeklyReport,
+  MonthlyReport,
+  WelcomeReport,
+  Feedback48hReport,
+  Checkin7dReport,
+} from "@/lib/daily-companion";
 
 export const runtime = "nodejs";
 
@@ -139,6 +150,28 @@ const mockBillLegacy = singleBillReport({
   paymentSourceLast4: null,
 });
 
+const mockWelcome: WelcomeReport = {
+  userName: "Jordan Rivera",
+  userEmail: "preview.user@example.com",
+  emailType: "welcome",
+  dashboardUrl: "https://www.appflowtrack.com/dashboard",
+  generatedAt: new Date().toISOString(),
+};
+
+const mockFeedback48h: Feedback48hReport = {
+  userName: "Jordan Rivera",
+  userEmail: "preview.user@example.com",
+  emailType: "feedback_48h",
+  generatedAt: new Date().toISOString(),
+};
+
+const mockCheckin7d: Checkin7dReport = {
+  userName: "Jordan Rivera",
+  userEmail: "preview.user@example.com",
+  emailType: "checkin_7d",
+  generatedAt: new Date().toISOString(),
+};
+
 export async function GET(req: Request) {
   // Same reasoning as app/api/test-email/route.ts: next build sets
   // NODE_ENV=production for both Vercel Preview and Production, so this
@@ -171,6 +204,15 @@ export async function GET(req: Request) {
       break;
     case "bill_legacy":
       rendered = renderBillReminder(mockBillLegacy);
+      break;
+    case "welcome":
+      rendered = renderWelcome(mockWelcome);
+      break;
+    case "feedback_48h":
+      rendered = renderFeedback48h(mockFeedback48h);
+      break;
+    case "checkin_7d":
+      rendered = renderCheckin7d(mockCheckin7d);
       break;
     default:
       rendered = renderGoodMorning(mockDaily);

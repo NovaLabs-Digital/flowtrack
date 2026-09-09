@@ -12,23 +12,39 @@ export function getResend(): Resend {
   return resendInstance;
 }
 
-export async function sendEmail(email: BuiltEmail): Promise<{ success: boolean; error?: string }> {
+export type SendEmailOptions = {
+  // Forwarded verbatim to Resend's `Idempotency-Key` header (see
+  // node_modules/resend/dist/index.d.mts — `IdempotentRequest.idempotencyKey`,
+  // the second argument to `emails.send()`, not a body field). Optional and
+  // additive: every existing call site that omits it is unaffected.
+  idempotencyKey?: string;
+};
+
+export async function sendEmail(
+  email: BuiltEmail,
+  options?: SendEmailOptions
+): Promise<{ success: boolean; error?: string; id?: string }> {
   const fromAddress = process.env.RESEND_FROM_ADDRESS ?? "FlowTrack Companion <companion@appflowtrack.com>";
 
   try {
     const resend = getResend();
-    const { error } = await resend.emails.send({
-      from: fromAddress,
-      to: email.to,
-      subject: email.subject,
-      html: email.html,
-    });
+    const { data, error } = await resend.emails.send(
+      {
+        from: fromAddress,
+        to: email.to,
+        subject: email.subject,
+        html: email.html,
+        ...(email.text ? { text: email.text } : {}),
+        ...(email.replyTo ? { replyTo: email.replyTo } : {}),
+      },
+      options?.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : undefined
+    );
 
     if (error) {
       return { success: false, error: error.message };
     }
 
-    return { success: true };
+    return { success: true, id: data?.id };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return { success: false, error: message };

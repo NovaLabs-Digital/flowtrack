@@ -1,4 +1,12 @@
-import type { DailyReport, WeeklyReport, MonthlyReport, CongratulationsReport } from "./types";
+import type {
+  DailyReport,
+  WeeklyReport,
+  MonthlyReport,
+  CongratulationsReport,
+  WelcomeReport,
+  Feedback48hReport,
+  Checkin7dReport,
+} from "./types";
 
 function formatCurrency(value: number): string {
   return value.toLocaleString("en-US", {
@@ -277,5 +285,135 @@ ${report.freedomDateMovement > 0 ? `<div style="font-size:11px;color:#34d399;mar
   return {
     subject: `Monthly Progress — ${report.monthLabel}`,
     html: baseLayout(content),
+  };
+}
+
+// Signup lifecycle emails (Welcome, ~48h feedback, 7-day check-in) — all
+// three are deliberately plain: no financial data, no promotional content,
+// a single short ask/CTA, and (for the two follow-ups) a visible STOP line.
+// Each also returns a `text` plain-text alternative, since these are the
+// first emails a brand-new user receives and are the most likely to be
+// read in a plain-text-preferring client.
+
+function firstNameOf(userName: string): string {
+  return userName.split(" ")[0] || userName || "there";
+}
+
+export function renderWelcome(report: WelcomeReport): { subject: string; html: string; text: string } {
+  const name = escapeHtml(firstNameOf(report.userName));
+  const safeUrl = escapeHtml(report.dashboardUrl);
+
+  const content = `
+<div style="font-size:15px;color:#e2e8f0;margin-bottom:16px;">Welcome to FlowTrack, ${name}.</div>
+<div style="font-size:13px;color:#94a3b8;margin-bottom:20px;line-height:1.6;">
+You just took the first step toward seeing exactly where your money goes. FlowTrack is built around one idea:
+</div>
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;border-radius:12px;border:1px solid #334155;margin-bottom:20px;">
+<tr><td style="padding:16px;text-align:center;">
+<div style="font-size:14px;font-weight:600;color:#34d399;">See it. Measure it. Control it.</div>
+</td></tr>
+</table>
+<div style="font-size:13px;color:#94a3b8;margin-bottom:24px;line-height:1.6;">
+Add your income and a few expenses, and your dashboard will start showing you the real picture right away.
+</div>
+<table role="presentation" cellpadding="0" cellspacing="0">
+<tr><td style="border-radius:10px;background:#10b981;">
+<a href="${safeUrl}" style="display:inline-block;padding:12px 24px;font-size:13px;font-weight:600;color:#052e1f;text-decoration:none;">Continue setup</a>
+</td></tr>
+</table>
+<div style="font-size:12px;color:#64748b;margin-top:24px;line-height:1.6;">
+Questions along the way? Just reply to this email — it reaches our support team directly.
+</div>`;
+
+  return {
+    subject: `Welcome to FlowTrack, ${firstNameOf(report.userName)}`,
+    html: baseLayout(content),
+    text: `Welcome to FlowTrack, ${firstNameOf(report.userName)}.
+
+You just took the first step toward seeing exactly where your money goes. FlowTrack is built around one idea: See it. Measure it. Control it.
+
+Add your income and a few expenses, and your dashboard will start showing you the real picture right away.
+
+Continue setup: ${report.dashboardUrl}
+
+Questions along the way? Just reply to this email — it reaches our support team directly.`,
+  };
+}
+
+export function renderFeedback48h(report: Feedback48hReport): { subject: string; html: string; text: string } {
+  const name = escapeHtml(firstNameOf(report.userName));
+
+  const questions = [
+    "Did the landing page clearly explain what FlowTrack does?",
+    "Did signing up and getting started feel simple?",
+    "Did the dashboard help you understand your finances?",
+    "What felt confusing, if anything?",
+    "Could you see yourself coming back weekly?",
+  ];
+
+  const questionsHtml = questions
+    .map(
+      (q, i) =>
+        `<div style="font-size:13px;color:#e2e8f0;padding:8px 0;${i > 0 ? "border-top:1px solid #334155;" : ""}">${i + 1}. ${escapeHtml(q)}</div>`
+    )
+    .join("");
+
+  const content = `
+<div style="font-size:15px;color:#e2e8f0;margin-bottom:12px;">Hi ${name}, quick question.</div>
+<div style="font-size:13px;color:#94a3b8;margin-bottom:20px;line-height:1.6;">
+You've had a couple of days with FlowTrack. Alberto (the person building it) personally reads every reply — five quick questions, whenever you have a minute:
+</div>
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;border-radius:12px;border:1px solid #334155;margin-bottom:20px;">
+<tr><td style="padding:16px;">
+${questionsHtml}
+</td></tr>
+</table>
+<div style="font-size:13px;color:#e2e8f0;line-height:1.6;">
+Just hit reply — that's the whole process, no forms or surveys.
+</div>
+<div style="font-size:11px;color:#475569;margin-top:24px;line-height:1.6;">
+Reply STOP if you don't want additional FlowTrack check-ins.
+</div>`;
+
+  return {
+    subject: "Quick question about your FlowTrack experience",
+    html: baseLayout(content),
+    text: `Hi ${firstNameOf(report.userName)}, quick question.
+
+You've had a couple of days with FlowTrack. Alberto (the person building it) personally reads every reply — five quick questions, whenever you have a minute:
+
+${questions.map((q, i) => `${i + 1}. ${q}`).join("\n")}
+
+Just hit reply — that's the whole process, no forms or surveys.
+
+Reply STOP if you don't want additional FlowTrack check-ins.`,
+  };
+}
+
+export function renderCheckin7d(report: Checkin7dReport): { subject: string; html: string; text: string } {
+  const name = escapeHtml(firstNameOf(report.userName));
+
+  const content = `
+<div style="font-size:15px;color:#e2e8f0;margin-bottom:16px;">Hi ${name}, checking in.</div>
+<div style="font-size:13px;color:#94a3b8;margin-bottom:20px;line-height:1.6;">
+You've been using FlowTrack for about a week now. If anything is blocking you or feels confusing, we'd genuinely like to help — just reply to this email, or open Help from inside your dashboard.
+</div>
+<div style="font-size:13px;color:#94a3b8;line-height:1.6;">
+No pressure either way — just wanted to check in.
+</div>
+<div style="font-size:11px;color:#475569;margin-top:24px;line-height:1.6;">
+Reply STOP if you don't want additional FlowTrack check-ins.
+</div>`;
+
+  return {
+    subject: "Checking in — anything blocking you on FlowTrack?",
+    html: baseLayout(content),
+    text: `Hi ${firstNameOf(report.userName)}, checking in.
+
+You've been using FlowTrack for about a week now. If anything is blocking you or feels confusing, we'd genuinely like to help — just reply to this email, or open Help from inside your dashboard.
+
+No pressure either way — just wanted to check in.
+
+Reply STOP if you don't want additional FlowTrack check-ins.`,
   };
 }

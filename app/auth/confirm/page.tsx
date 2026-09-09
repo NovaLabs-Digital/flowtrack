@@ -44,6 +44,33 @@ function isAllowedType(value: string | null): value is ConfirmOtpType {
   return value !== null && ALLOWED_TYPES.has(value);
 }
 
+// Best-effort only: never awaited by the caller, and its outcome never
+// affects navigation or this page's state. A scheduled cron
+// (/api/cron/signup-emails) independently discovers and retries any
+// confirmed user whose welcome email is still pending, so a failed or
+// interrupted (e.g. browser closed) attempt here is never the only chance
+// at delivery — this request, cron, or both together may end up sending
+// it; that's fine, since the atomic claim in the shared service makes
+// duplicate sends safe either way.
+//
+// keepalive: true asks the browser to let this request outlive the page
+// that started it (e.g. the router.replace navigation right after this
+// call), instead of the navigation risking cancellation of an in-flight
+// fetch. It improves the odds this best-effort attempt actually reaches
+// the server — it does not guarantee delivery: the request can still fail,
+// time out, or (per the browser's keepalive rules) be dropped if it were
+// ever given a body over ~64KB, which this one never has since it sends
+// none.
+function triggerWelcomeEmailBestEffort(accessToken: string) {
+  fetch("/api/lifecycle-emails/welcome", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    keepalive: true,
+  }).catch(() => {
+    // Intentionally ignored — see comment above.
+  });
+}
+
 export default function ConfirmEmailPage() {
   return (
     <Suspense fallback={null}>
@@ -112,6 +139,11 @@ function ConfirmEmailForm() {
         await continueWithExistingSessionOrShowInvalid();
         return;
       }
+
+      // Deliberately not awaited — see triggerWelcomeEmailBestEffort's
+      // comment. Confirmation/dashboard access must never wait on, or be
+      // blocked by, email delivery.
+      triggerWelcomeEmailBestEffort(data.session.access_token);
 
       router.replace("/dashboard");
     }

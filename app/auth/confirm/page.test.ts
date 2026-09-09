@@ -157,8 +157,65 @@ describe("auth/confirm page: no redirect loop, no lifecycle-email infrastructure
     }
   });
 
-  it("does not introduce any Resend/cron/lifecycle-email/database code", () => {
-    expect(source).not.toMatch(/resend\.emails|RESEND_API_KEY|cron|lifecycle_email|supabaseAdmin/i);
+  it("triggers the immediate-welcome endpoint by fetch only — no Resend/cron/database code lives in this page itself", () => {
+    // Deliberate, minimal wiring: a plain fetch to the protected endpoint,
+    // authenticated with this page's own freshly-established session
+    // token. Everything about *how* the welcome email is built, claimed,
+    // and sent lives in lib/lifecycle-emails/service.ts and the route
+    // itself — never duplicated here.
+    expect(source).toMatch(/fetch\("\/api\/lifecycle-emails\/welcome"/);
+    expect(source).toMatch(/Authorization:\s*`Bearer \$\{accessToken\}`/);
+    // Comments may legitimately reference the cron route by path/name to
+    // explain the retry guarantee; only executable code must never
+    // actually touch Resend/Supabase-admin/lifecycle internals directly.
+    const codeOnly = source
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("//"))
+      .join("\n");
+    expect(codeOnly).not.toMatch(/resend\.emails|RESEND_API_KEY|supabaseAdmin/i);
+    expect(codeOnly).not.toMatch(/from ["']@\/lib\/lifecycle-emails\/service["']/);
+    expect(codeOnly).not.toContain(".from(\"lifecycle_emails\")");
+  });
+
+  it("the welcome trigger is fire-and-forget: never awaited, and its rejection is caught so it can never throw into the confirm flow", () => {
+    const triggerBody = source.slice(
+      source.indexOf("function triggerWelcomeEmailBestEffort"),
+      source.indexOf("export default function ConfirmEmailPage")
+    );
+    expect(triggerBody).toMatch(/\.catch\(/);
+
+    const runBody = source.slice(source.indexOf("async function run("), source.indexOf("run();"));
+    expect(runBody).not.toMatch(/await triggerWelcomeEmailBestEffort/);
+    expect(runBody).toContain("triggerWelcomeEmailBestEffort(data.session.access_token);");
+  });
+
+  it("dashboard navigation does not wait on, or depend on the outcome of, the welcome trigger", () => {
+    const runBody = source.slice(source.indexOf("async function run("), source.indexOf("run();"));
+    const triggerIndex = runBody.indexOf("triggerWelcomeEmailBestEffort(");
+    const navigateIndex = runBody.indexOf('router.replace("/dashboard")');
+    expect(triggerIndex).toBeGreaterThan(-1);
+    expect(navigateIndex).toBeGreaterThan(triggerIndex);
+  });
+
+  it("sets keepalive: true on the fetch, and documents that it improves but does not guarantee delivery", () => {
+    const triggerBody = source.slice(
+      source.indexOf("function triggerWelcomeEmailBestEffort"),
+      source.indexOf("export default function ConfirmEmailPage")
+    );
+    expect(triggerBody).toMatch(/keepalive:\s*true/);
+    expect(source).toMatch(/does not guarantee delivery/);
+  });
+
+  it("the request still carries no body — only the Authorization header identifies the caller", () => {
+    const triggerBody = source.slice(
+      source.indexOf("function triggerWelcomeEmailBestEffort"),
+      source.indexOf("export default function ConfirmEmailPage")
+    );
+    expect(triggerBody).not.toMatch(/body:/);
+    expect(triggerBody).not.toMatch(/JSON\.stringify/);
+    // \b avoids false-flagging the route path itself ("lifecycle-emails").
+    expect(triggerBody).not.toMatch(/\bemail\b/i);
+    expect(triggerBody).not.toMatch(/userId/);
   });
 
   it("wraps useSearchParams in a Suspense boundary, matching the mfa-challenge/login convention", () => {

@@ -51,6 +51,12 @@ describe("email-preview route: all existing preview types still work locally", (
     }
   });
 
+  it("adds the three signup lifecycle preview types", () => {
+    for (const type of ["welcome", "feedback_48h", "checkin_7d"]) {
+      expect(source).toContain(`case "${type}":`);
+    }
+  });
+
   it("still supports both the html and json response formats", () => {
     expect(source).toContain('searchParams.get("format") === "json"');
     expect(source).toContain('headers: { "Content-Type": "text/html" }');
@@ -65,6 +71,9 @@ describe("email-preview route: production templates untouched", () => {
       "renderCongratulations",
       "renderWeeklyProgress",
       "renderMonthlyProgress",
+      "renderWelcome",
+      "renderFeedback48h",
+      "renderCheckin7d",
     ]) {
       expect(source).toContain(fn);
     }

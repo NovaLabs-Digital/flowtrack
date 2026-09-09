@@ -3,7 +3,10 @@ export type EmailType =
   | "bill_reminder"
   | "congratulations"
   | "weekly_progress"
-  | "monthly_progress";
+  | "monthly_progress"
+  | "welcome"
+  | "feedback_48h"
+  | "checkin_7d";
 
 export type BillDue = {
   name: string;
@@ -71,5 +74,33 @@ export type CongratulationsReport = {
   detail: string;
   freedomDate: string;
   encouragement: string;
+  generatedAt: string;
+};
+
+// The three signup lifecycle emails (Welcome, ~48h feedback, 7-day
+// check-in). Deliberately minimal — no debt/freedom-date fields, since
+// these are account-guidance/feedback emails, not financial progress
+// reports.
+export type WelcomeReport = {
+  userName: string;
+  userEmail: string;
+  emailType: "welcome";
+  // Absolute URL for the primary CTA button. Passed in rather than read
+  // from an env var inside the template, so this file stays pure/testable.
+  dashboardUrl: string;
+  generatedAt: string;
+};
+
+export type Feedback48hReport = {
+  userName: string;
+  userEmail: string;
+  emailType: "feedback_48h";
+  generatedAt: string;
+};
+
+export type Checkin7dReport = {
+  userName: string;
+  userEmail: string;
+  emailType: "checkin_7d";
   generatedAt: string;
 };
