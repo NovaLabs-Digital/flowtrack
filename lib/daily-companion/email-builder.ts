@@ -6,6 +6,10 @@ import type {
   WelcomeReport,
   Feedback48hReport,
   Checkin7dReport,
+  LaunchCohortWelcomeReport,
+  LaunchCohortStoryReport,
+  LaunchCohortRoutineReport,
+  LaunchCohortCheckinReport,
 } from "./types";
 import {
   renderGoodMorning,
@@ -16,6 +20,10 @@ import {
   renderWelcome,
   renderFeedback48h,
   renderCheckin7d,
+  renderLaunchCohortWelcome,
+  renderLaunchCohortStory,
+  renderLaunchCohortRoutine,
+  renderLaunchCohortCheckin,
 } from "./email-templates";
 
 export type BuiltEmail = {
@@ -103,5 +111,56 @@ export function buildCheckin7dEmail(report: Checkin7dReport): BuiltEmail {
     html: rendered.html,
     text: rendered.text,
     replyTo: LIFECYCLE_REPLY_TO,
+  };
+}
+
+// Launch cohort emails (lib/launch-cohort/) — the same support reply-to as
+// the signup lifecycle sequence, since both ultimately land in the mailbox
+// Alberto actually reads. Kept as a separate constant reference (same
+// value, not a shared import) so the two campaigns' builder functions stay
+// independently editable without coupling one's constant to the other's.
+const LAUNCH_COHORT_REPLY_TO = "support@appflowtrack.com";
+
+export function buildLaunchCohortWelcomeEmail(report: LaunchCohortWelcomeReport): BuiltEmail {
+  const rendered = renderLaunchCohortWelcome(report);
+  return {
+    to: report.userEmail,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    replyTo: LAUNCH_COHORT_REPLY_TO,
+  };
+}
+
+export function buildLaunchCohortStoryEmail(report: LaunchCohortStoryReport): BuiltEmail {
+  const rendered = renderLaunchCohortStory(report);
+  return {
+    to: report.userEmail,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    replyTo: LAUNCH_COHORT_REPLY_TO,
+  };
+}
+
+export function buildLaunchCohortRoutineEmail(report: LaunchCohortRoutineReport): BuiltEmail {
+  const rendered = renderLaunchCohortRoutine(report);
+  return {
+    to: report.userEmail,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    replyTo: LAUNCH_COHORT_REPLY_TO,
+  };
+}
+
+export function buildLaunchCohortCheckinEmail(report: LaunchCohortCheckinReport): BuiltEmail {
+  const rendered = renderLaunchCohortCheckin(report);
+  return {
+    to: report.userEmail,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    replyTo: LAUNCH_COHORT_REPLY_TO,
   };
 }

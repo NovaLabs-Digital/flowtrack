@@ -679,13 +679,16 @@ describe("lifecycle_emails_runbook.sql: cron cadence documentation is resolved, 
   });
 });
 
-describe("vercel.json: signup-emails cron added alongside the unmodified Bill Guardian cron", () => {
+describe("vercel.json: signup-emails cron added alongside the unmodified Bill Guardian cron (and, later, launch-cohort-emails)", () => {
   const vercelJson = JSON.parse(
     readFileSync(join(__dirname, "..", "..", "vercel.json"), "utf-8")
   ) as { crons: { path: string; schedule: string }[] };
 
-  it("contains exactly two cron entries", () => {
-    expect(vercelJson.crons).toHaveLength(2);
+  it("contains exactly three cron entries", () => {
+    // bill-reminders (pre-existing) + signup-emails (this feature) +
+    // launch-cohort-emails (lib/launch-cohort/ — see
+    // migration_launch_cohort.test.ts for that cron's own assertions).
+    expect(vercelJson.crons).toHaveLength(3);
   });
 
   it("preserves the existing Bill Guardian cron exactly (path and schedule unchanged)", () => {

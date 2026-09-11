@@ -6,6 +6,10 @@ import type {
   WelcomeReport,
   Feedback48hReport,
   Checkin7dReport,
+  LaunchCohortWelcomeReport,
+  LaunchCohortStoryReport,
+  LaunchCohortRoutineReport,
+  LaunchCohortCheckinReport,
 } from "./types";
 
 function formatCurrency(value: number): string {
@@ -415,5 +419,177 @@ You've been using FlowTrack for about a week now. If anything is blocking you or
 No pressure either way — just wanted to check in.
 
 Reply STOP if you don't want additional FlowTrack check-ins.`,
+  };
+}
+
+// The four one-time "launch cohort" emails (lib/launch-cohort/) sent to an
+// explicitly-approved cohort of existing external users over three weeks,
+// scheduled from a single campaign start time rather than each user's own
+// signup date. Deliberately plain like the three signup-lifecycle emails
+// above: no financial data, no upgrade pressure or promotional copy, a
+// single easy ask per email. Per the campaign's own requirements, the STOP
+// suppression line appears ONLY on the day-21 check-in — not on day 7 or
+// day 14 — which is why only renderLaunchCohortCheckin includes it.
+
+export function renderLaunchCohortWelcome(
+  report: LaunchCohortWelcomeReport
+): { subject: string; html: string; text: string } {
+  const name = escapeHtml(firstNameOf(report.userName));
+  const safeUrl = escapeHtml(report.dashboardUrl);
+
+  const content = `
+<div style="font-size:15px;color:#e2e8f0;margin-bottom:16px;">Welcome to FlowTrack, ${name} — glad to have you here.</div>
+<div style="font-size:13px;color:#94a3b8;margin-bottom:20px;line-height:1.6;">
+FlowTrack helps you see exactly where your money goes, measure your progress over time, and make better decisions with real numbers instead of guesswork.
+</div>
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;border-radius:12px;border:1px solid #334155;margin-bottom:20px;">
+<tr><td style="padding:16px;text-align:center;">
+<div style="font-size:14px;font-weight:600;color:#34d399;">See it. Measure it. Control it.</div>
+</td></tr>
+</table>
+<div style="font-size:13px;color:#e2e8f0;margin-bottom:8px;font-weight:600;">Three simple first steps:</div>
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;border-radius:12px;border:1px solid #334155;margin-bottom:20px;">
+<tr><td style="padding:16px;">
+<div style="font-size:13px;color:#e2e8f0;padding:6px 0;">1. Add your income</div>
+<div style="font-size:13px;color:#e2e8f0;padding:6px 0;border-top:1px solid #334155;">2. Add a few expenses</div>
+<div style="font-size:13px;color:#e2e8f0;padding:6px 0;border-top:1px solid #334155;">3. Review your dashboard</div>
+</td></tr>
+</table>
+<table role="presentation" cellpadding="0" cellspacing="0">
+<tr><td style="border-radius:10px;background:#10b981;">
+<a href="${safeUrl}" style="display:inline-block;padding:12px 24px;font-size:13px;font-weight:600;color:#052e1f;text-decoration:none;">Open your dashboard</a>
+</td></tr>
+</table>
+<div style="font-size:12px;color:#64748b;margin-top:24px;line-height:1.6;">
+Questions along the way? Just reply to this email — it reaches our support team directly.
+</div>`;
+
+  return {
+    subject: `Welcome to FlowTrack, ${firstNameOf(report.userName)}`,
+    html: baseLayout(content),
+    text: `Welcome to FlowTrack, ${firstNameOf(report.userName)} — glad to have you here.
+
+FlowTrack helps you see exactly where your money goes, measure your progress over time, and make better decisions with real numbers instead of guesswork. See it. Measure it. Control it.
+
+Three simple first steps:
+1. Add your income
+2. Add a few expenses
+3. Review your dashboard
+
+Open your dashboard: ${report.dashboardUrl}
+
+Questions along the way? Just reply to this email — it reaches our support team directly.`,
+  };
+}
+
+export function renderLaunchCohortStory(
+  report: LaunchCohortStoryReport
+): { subject: string; html: string; text: string } {
+  const name = escapeHtml(firstNameOf(report.userName));
+  const safeUrl = escapeHtml(report.dashboardUrl);
+
+  const content = `
+<div style="font-size:15px;color:#e2e8f0;margin-bottom:16px;">Hi ${name}, your dashboard is starting to tell a story.</div>
+<div style="font-size:13px;color:#94a3b8;margin-bottom:20px;line-height:1.6;">
+Categories group your income and expenses so patterns become visible instead of buried in a list. Budgets let you set a monthly limit per category, so you can see at a glance whether you're on track before the month is over — not after.
+</div>
+<div style="font-size:13px;color:#94a3b8;margin-bottom:20px;line-height:1.6;">
+A few minutes reviewing your categories and budgets now can reveal spending patterns you hadn't noticed.
+</div>
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+<tr><td style="border-radius:10px;background:#10b981;">
+<a href="${safeUrl}" style="display:inline-block;padding:12px 24px;font-size:13px;font-weight:600;color:#052e1f;text-decoration:none;">Review your categories</a>
+</td></tr>
+</table>
+<div style="font-size:13px;color:#e2e8f0;line-height:1.6;">
+One easy question: what felt clear, and what felt confusing? Just hit reply — Alberto personally reads every response.
+</div>`;
+
+  return {
+    subject: "Your dashboard is starting to tell a story",
+    html: baseLayout(content),
+    text: `Hi ${firstNameOf(report.userName)}, your dashboard is starting to tell a story.
+
+Categories group your income and expenses so patterns become visible instead of buried in a list. Budgets let you set a monthly limit per category, so you can see at a glance whether you're on track before the month is over — not after.
+
+A few minutes reviewing your categories and budgets now can reveal spending patterns you hadn't noticed.
+
+Review your categories: ${report.dashboardUrl}
+
+One easy question: what felt clear, and what felt confusing? Just hit reply — Alberto personally reads every response.`,
+  };
+}
+
+export function renderLaunchCohortRoutine(
+  report: LaunchCohortRoutineReport
+): { subject: string; html: string; text: string } {
+  const name = escapeHtml(firstNameOf(report.userName));
+  const safeUrl = escapeHtml(report.dashboardUrl);
+
+  const content = `
+<div style="font-size:15px;color:#e2e8f0;margin-bottom:16px;">Hi ${name}, a simple weekly FlowTrack routine.</div>
+<div style="font-size:13px;color:#94a3b8;margin-bottom:20px;line-height:1.6;">
+The people who get the most out of FlowTrack usually spend just 5-10 minutes a week on it. A simple routine that works well:
+</div>
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;border-radius:12px;border:1px solid #334155;margin-bottom:20px;">
+<tr><td style="padding:16px;">
+<div style="font-size:13px;color:#e2e8f0;padding:6px 0;">Check your recent transactions</div>
+<div style="font-size:13px;color:#e2e8f0;padding:6px 0;border-top:1px solid #334155;">Look at any upcoming bills</div>
+<div style="font-size:13px;color:#e2e8f0;padding:6px 0;border-top:1px solid #334155;">Pick one small improvement for next week</div>
+</td></tr>
+</table>
+<table role="presentation" cellpadding="0" cellspacing="0">
+<tr><td style="border-radius:10px;background:#10b981;">
+<a href="${safeUrl}" style="display:inline-block;padding:12px 24px;font-size:13px;font-weight:600;color:#052e1f;text-decoration:none;">Start this week's review</a>
+</td></tr>
+</table>
+<div style="font-size:12px;color:#64748b;margin-top:24px;line-height:1.6;">
+Questions along the way? Just reply to this email — it reaches our support team directly.
+</div>`;
+
+  return {
+    subject: "A simple weekly FlowTrack routine",
+    html: baseLayout(content),
+    text: `Hi ${firstNameOf(report.userName)}, a simple weekly FlowTrack routine.
+
+The people who get the most out of FlowTrack usually spend just 5-10 minutes a week on it. A simple routine that works well:
+
+- Check your recent transactions
+- Look at any upcoming bills
+- Pick one small improvement for next week
+
+Start this week's review: ${report.dashboardUrl}
+
+Questions along the way? Just reply to this email — it reaches our support team directly.`,
+  };
+}
+
+export function renderLaunchCohortCheckin(
+  report: LaunchCohortCheckinReport
+): { subject: string; html: string; text: string } {
+  const name = escapeHtml(firstNameOf(report.userName));
+
+  const content = `
+<div style="font-size:15px;color:#e2e8f0;margin-bottom:16px;">Hi ${name}, checking in.</div>
+<div style="font-size:13px;color:#94a3b8;margin-bottom:20px;line-height:1.6;">
+It's been about three weeks since you started with FlowTrack. Is anything blocking you or feels confusing? We would genuinely like to help — just reply to this email, or reach support directly.
+</div>
+<div style="font-size:13px;color:#94a3b8;line-height:1.6;">
+No pressure either way — just wanted to check in.
+</div>
+<div style="font-size:11px;color:#475569;margin-top:24px;line-height:1.6;">
+Reply STOP if you do not want additional FlowTrack check-ins.
+</div>`;
+
+  return {
+    subject: "Checking in — anything blocking you on FlowTrack?",
+    html: baseLayout(content),
+    text: `Hi ${firstNameOf(report.userName)}, checking in.
+
+It's been about three weeks since you started with FlowTrack. Is anything blocking you or feels confusing? We would genuinely like to help — just reply to this email, or reach support directly.
+
+No pressure either way — just wanted to check in.
+
+Reply STOP if you do not want additional FlowTrack check-ins.`,
   };
 }

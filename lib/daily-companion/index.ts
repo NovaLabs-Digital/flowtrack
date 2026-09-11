@@ -8,6 +8,10 @@ export type {
   WelcomeReport,
   Feedback48hReport,
   Checkin7dReport,
+  LaunchCohortWelcomeReport,
+  LaunchCohortStoryReport,
+  LaunchCohortRoutineReport,
+  LaunchCohortCheckinReport,
 } from "./types";
 
 export { buildDailyReport } from "./daily-report";
@@ -20,6 +24,10 @@ export {
   buildWelcomeEmail,
   buildFeedback48hEmail,
   buildCheckin7dEmail,
+  buildLaunchCohortWelcomeEmail,
+  buildLaunchCohortStoryEmail,
+  buildLaunchCohortRoutineEmail,
+  buildLaunchCohortCheckinEmail,
 } from "./email-builder";
 export type { BuiltEmail } from "./email-builder";
 
@@ -32,6 +40,10 @@ export {
   renderWelcome,
   renderFeedback48h,
   renderCheckin7d,
+  renderLaunchCohortWelcome,
+  renderLaunchCohortStory,
+  renderLaunchCohortRoutine,
+  renderLaunchCohortCheckin,
 } from "./email-templates";
 
 export { sendEmail, getResend } from "./scheduler";

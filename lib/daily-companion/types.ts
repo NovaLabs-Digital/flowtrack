@@ -6,7 +6,11 @@ export type EmailType =
   | "monthly_progress"
   | "welcome"
   | "feedback_48h"
-  | "checkin_7d";
+  | "checkin_7d"
+  | "launch_cohort_welcome"
+  | "launch_cohort_story"
+  | "launch_cohort_routine"
+  | "launch_cohort_checkin";
 
 export type BillDue = {
   name: string;
@@ -102,5 +106,42 @@ export type Checkin7dReport = {
   userName: string;
   userEmail: string;
   emailType: "checkin_7d";
+  generatedAt: string;
+};
+
+// The four one-time "launch cohort" emails sent to an explicitly-approved
+// cohort of existing external users (lib/launch-cohort/), scheduled from a
+// single campaign start time rather than each user's own signup date. A
+// deliberately separate email-type namespace from the three above (never
+// "welcome" etc.) so this one-time campaign can never be confused with, or
+// accidentally merged into, the ongoing signup lifecycle sequence.
+export type LaunchCohortWelcomeReport = {
+  userName: string;
+  userEmail: string;
+  emailType: "launch_cohort_welcome";
+  dashboardUrl: string;
+  generatedAt: string;
+};
+
+export type LaunchCohortStoryReport = {
+  userName: string;
+  userEmail: string;
+  emailType: "launch_cohort_story";
+  dashboardUrl: string;
+  generatedAt: string;
+};
+
+export type LaunchCohortRoutineReport = {
+  userName: string;
+  userEmail: string;
+  emailType: "launch_cohort_routine";
+  dashboardUrl: string;
+  generatedAt: string;
+};
+
+export type LaunchCohortCheckinReport = {
+  userName: string;
+  userEmail: string;
+  emailType: "launch_cohort_checkin";
   generatedAt: string;
 };

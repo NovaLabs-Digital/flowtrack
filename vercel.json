@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/signup-emails",
       "schedule": "17 */6 * * *"
+    },
+    {
+      "path": "/api/cron/launch-cohort-emails",
+      "schedule": "45 13 * * *"
     }
   ]
 }
